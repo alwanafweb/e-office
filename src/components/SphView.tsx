@@ -21,6 +21,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { Customer, ItemService, PKS, ServiceCategory, SPH, TechnicalSpec } from '../types';
+import { getDecryptedItem, setEncryptedItem, removeEncryptedItem } from '../utils/crypto';
 import { formatDateIndonesian, formatIDR, generateDocNumber } from '../utils/formatters';
 import { COMPANY_PROFILE } from '../data/initialData';
 
@@ -94,11 +95,10 @@ export const SphView: React.FC<SphViewProps> = ({
   // Check if draft exists on mount / form open
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('ldi_draft_sph');
+      const saved = getDecryptedItem<any>('ldi_draft_sph');
       if (saved) {
         setHasDraftAvailable(true);
-        const parsed = JSON.parse(saved);
-        if (parsed.savedAt) setLastAutoSaveTime(parsed.savedAt);
+        if (saved.savedAt) setLastAutoSaveTime(saved.savedAt);
       }
     } catch (e) {
       // Ignore parse error
@@ -125,7 +125,7 @@ export const SphView: React.FC<SphViewProps> = ({
           terms,
           savedAt: timeStr,
         };
-        localStorage.setItem('ldi_draft_sph', JSON.stringify(draftData));
+        setEncryptedItem('ldi_draft_sph', draftData);
         setLastAutoSaveTime(timeStr);
         setHasDraftAvailable(true);
       } catch (err) {
@@ -138,9 +138,8 @@ export const SphView: React.FC<SphViewProps> = ({
 
   const handleLoadDraft = () => {
     try {
-      const saved = localStorage.getItem('ldi_draft_sph');
-      if (saved) {
-        const draft = JSON.parse(saved);
+      const draft = getDecryptedItem<any>('ldi_draft_sph');
+      if (draft) {
         if (draft.selectedCustId) setSelectedCustId(draft.selectedCustId);
         if (draft.validityDays) setValidityDays(draft.validityDays);
         if (typeof draft.useTax === 'boolean') setUseTax(draft.useTax);
@@ -155,7 +154,7 @@ export const SphView: React.FC<SphViewProps> = ({
   };
 
   const handleClearDraft = () => {
-    localStorage.removeItem('ldi_draft_sph');
+    removeEncryptedItem('ldi_draft_sph');
     setHasDraftAvailable(false);
     setLastAutoSaveTime(null);
   };
@@ -239,7 +238,7 @@ export const SphView: React.FC<SphViewProps> = ({
     };
 
     onAddSph(newSph);
-    localStorage.removeItem('ldi_draft_sph');
+    removeEncryptedItem('ldi_draft_sph');
     setHasDraftAvailable(false);
     setLastAutoSaveTime(null);
     setIsFormOpen(false);

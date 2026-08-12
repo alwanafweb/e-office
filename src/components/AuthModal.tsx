@@ -15,6 +15,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { User } from '../types';
+import { getDecryptedItem, setEncryptedItem } from '../utils/crypto';
 import {
   sendEmail,
   registerUser,
@@ -64,21 +65,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Get stored admin users from LocalStorage
+  // Get stored admin users from LocalStorage (Encrypted)
   const getStoredAdmins = (): StoredAdminUser[] => {
-    try {
-      const saved = localStorage.getItem('ldi_registered_admins');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+    return getDecryptedItem<StoredAdminUser[]>('ldi_registered_admins') || [];
   };
 
   // Save admin user
   const saveAdminUser = (user: StoredAdminUser) => {
     const admins = getStoredAdmins();
     const updated = [user, ...admins.filter((a) => a.email.toLowerCase() !== user.email.toLowerCase())];
-    localStorage.setItem('ldi_registered_admins', JSON.stringify(updated));
+    setEncryptedItem('ldi_registered_admins', updated);
   };
 
   // 1. DEMO LOGIN
@@ -309,7 +305,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     if (adminIndex !== -1) {
       storedAdmins[adminIndex].passwordHash = newPassword;
-      localStorage.setItem('ldi_registered_admins', JSON.stringify(storedAdmins));
+      setEncryptedItem('ldi_registered_admins', storedAdmins);
     } else {
       // Create admin record with new password
       saveAdminUser({

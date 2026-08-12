@@ -43,6 +43,11 @@ import {
   apiUpdateInvoice,
   apiDeleteInvoice,
 } from './api/client';
+import {
+  getDecryptedItem,
+  setEncryptedItem,
+  removeEncryptedItem,
+} from './utils/crypto';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('verifyDoc'); // Public default view
@@ -50,7 +55,7 @@ export default function App() {
 
   // Global Theme State (Light / Dark mode)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    const saved = localStorage.getItem('ldi_theme');
+    const saved = getDecryptedItem<'light' | 'dark'>('ldi_theme');
     if (saved === 'dark' || saved === 'light') return saved;
     return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
       ? 'dark'
@@ -58,7 +63,7 @@ export default function App() {
   });
 
   useEffect(() => {
-    localStorage.setItem('ldi_theme', theme);
+    setEncryptedItem('ldi_theme', theme);
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
@@ -72,8 +77,7 @@ export default function App() {
 
   // Current User / Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('ldi_current_user');
-    return saved ? JSON.parse(saved) : null;
+    return getDecryptedItem<User>('ldi_current_user');
   });
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
@@ -82,9 +86,9 @@ export default function App() {
   // Sync current user to localStorage
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem('ldi_current_user', JSON.stringify(currentUser));
+      setEncryptedItem('ldi_current_user', currentUser);
     } else {
-      localStorage.removeItem('ldi_current_user');
+      removeEncryptedItem('ldi_current_user');
     }
   }, [currentUser]);
 
@@ -129,10 +133,10 @@ export default function App() {
     };
   }, []);
 
-  // Load from localStorage or seed initial data
+  // Load from encrypted storage or seed initial data
   const [companyProfile, setCompanyProfile] = useState<CompanyProfile>(() => {
-    const saved = localStorage.getItem('ldi_company_profile');
-    return saved ? JSON.parse(saved) : COMPANY_PROFILE;
+    const saved = getDecryptedItem<CompanyProfile>('ldi_company_profile');
+    return saved || COMPANY_PROFILE;
   });
 
   // Dynamic update favicon & title in browser tab
@@ -155,43 +159,43 @@ export default function App() {
   }, [companyProfile.faviconUrl, companyProfile.logoUrl, companyProfile.name]);
 
   const [customers, setCustomers] = useState<Customer[]>(() => {
-    const resetDone = localStorage.getItem('ldi_reset_v2_clean');
+    const resetDone = getDecryptedItem<string>('ldi_reset_v2_clean');
     if (!resetDone) {
-      localStorage.removeItem('ldi_customers');
-      localStorage.removeItem('ldi_sph_list');
-      localStorage.removeItem('ldi_pks_list');
-      localStorage.removeItem('ldi_invoices');
-      localStorage.setItem('ldi_reset_v2_clean', 'true');
+      removeEncryptedItem('ldi_customers');
+      removeEncryptedItem('ldi_sph_list');
+      removeEncryptedItem('ldi_pks_list');
+      removeEncryptedItem('ldi_invoices');
+      setEncryptedItem('ldi_reset_v2_clean', 'true');
       return [];
     }
-    const saved = localStorage.getItem('ldi_customers');
-    return saved ? JSON.parse(saved) : [];
+    const saved = getDecryptedItem<Customer[]>('ldi_customers');
+    return saved || [];
   });
 
   const [sphList, setSphList] = useState<SPH[]>(() => {
-    const resetDone = localStorage.getItem('ldi_reset_v2_clean');
+    const resetDone = getDecryptedItem<string>('ldi_reset_v2_clean');
     if (!resetDone) return [];
-    const saved = localStorage.getItem('ldi_sph_list');
-    return saved ? JSON.parse(saved) : [];
+    const saved = getDecryptedItem<SPH[]>('ldi_sph_list');
+    return saved || [];
   });
 
   const [pksList, setPksList] = useState<PKS[]>(() => {
-    const resetDone = localStorage.getItem('ldi_reset_v2_clean');
+    const resetDone = getDecryptedItem<string>('ldi_reset_v2_clean');
     if (!resetDone) return [];
-    const saved = localStorage.getItem('ldi_pks_list');
-    return saved ? JSON.parse(saved) : [];
+    const saved = getDecryptedItem<PKS[]>('ldi_pks_list');
+    return saved || [];
   });
 
   const [invoices, setInvoices] = useState<Invoice[]>(() => {
-    const resetDone = localStorage.getItem('ldi_reset_v2_clean');
+    const resetDone = getDecryptedItem<string>('ldi_reset_v2_clean');
     if (!resetDone) return [];
-    const saved = localStorage.getItem('ldi_invoices');
-    return saved ? JSON.parse(saved) : [];
+    const saved = getDecryptedItem<Invoice[]>('ldi_invoices');
+    return saved || [];
   });
 
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() => {
-    const saved = localStorage.getItem('ldi_activity_logs');
-    if (saved) return JSON.parse(saved);
+    const saved = getDecryptedItem<ActivityLog[]>('ldi_activity_logs');
+    if (saved && saved.length > 0) return saved;
     return [
       {
         id: 'log-init-1',
@@ -212,7 +216,7 @@ export default function App() {
   } | null>(null);
 
   useEffect(() => {
-    localStorage.setItem('ldi_activity_logs', JSON.stringify(activityLogs));
+    setEncryptedItem('ldi_activity_logs', activityLogs);
   }, [activityLogs]);
 
   const addActivityLog = (
@@ -236,7 +240,7 @@ export default function App() {
   const handleClearActivityLogs = () => {
     if (confirm('Apakah Anda yakin ingin mengosongkan riwayat log aktivitas?')) {
       setActivityLogs([]);
-      localStorage.removeItem('ldi_activity_logs');
+      removeEncryptedItem('ldi_activity_logs');
     }
   };
 
@@ -245,10 +249,10 @@ export default function App() {
     setSphList([]);
     setPksList([]);
     setInvoices([]);
-    localStorage.removeItem('ldi_customers');
-    localStorage.removeItem('ldi_sph_list');
-    localStorage.removeItem('ldi_pks_list');
-    localStorage.removeItem('ldi_invoices');
+    removeEncryptedItem('ldi_customers');
+    removeEncryptedItem('ldi_sph_list');
+    removeEncryptedItem('ldi_pks_list');
+    removeEncryptedItem('ldi_invoices');
     addActivityLog('Sistem', 'Pengaturan', 'Database', 'Seluruh data operasional direset oleh Admin');
   };
 
@@ -301,25 +305,25 @@ export default function App() {
     };
   }, []);
 
-  // Sync state to LocalStorage
+  // Sync state to LocalStorage (Encrypted with AES-256)
   useEffect(() => {
-    localStorage.setItem('ldi_company_profile', JSON.stringify(companyProfile));
+    setEncryptedItem('ldi_company_profile', companyProfile);
   }, [companyProfile]);
 
   useEffect(() => {
-    localStorage.setItem('ldi_customers', JSON.stringify(customers));
+    setEncryptedItem('ldi_customers', customers);
   }, [customers]);
 
   useEffect(() => {
-    localStorage.setItem('ldi_sph_list', JSON.stringify(sphList));
+    setEncryptedItem('ldi_sph_list', sphList);
   }, [sphList]);
 
   useEffect(() => {
-    localStorage.setItem('ldi_pks_list', JSON.stringify(pksList));
+    setEncryptedItem('ldi_pks_list', pksList);
   }, [pksList]);
 
   useEffect(() => {
-    localStorage.setItem('ldi_invoices', JSON.stringify(invoices));
+    setEncryptedItem('ldi_invoices', invoices);
   }, [invoices]);
 
   // Customer Handlers

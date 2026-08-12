@@ -15,6 +15,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { Customer, ItemService, PKS, PKSClause, ServiceCategory, SPH } from '../types';
+import { getDecryptedItem, setEncryptedItem, removeEncryptedItem } from '../utils/crypto';
 import { formatIDR, generateDocNumber } from '../utils/formatters';
 import { COMPANY_PROFILE } from '../data/initialData';
 
@@ -174,11 +175,10 @@ export const CustomPksModal: React.FC<CustomPksModalProps> = ({
   // Check if draft exists on mount / modal open
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('ldi_draft_pks');
+      const saved = getDecryptedItem<any>('ldi_draft_pks');
       if (saved) {
         setHasDraftAvailable(true);
-        const parsed = JSON.parse(saved);
-        if (parsed.savedAt) setLastAutoSaveTime(parsed.savedAt);
+        if (saved.savedAt) setLastAutoSaveTime(saved.savedAt);
       }
     } catch (e) {
       // Ignore
@@ -216,7 +216,7 @@ export const CustomPksModal: React.FC<CustomPksModalProps> = ({
           party2SignerPosition,
           savedAt: timeStr,
         };
-        localStorage.setItem('ldi_draft_pks', JSON.stringify(draftData));
+        setEncryptedItem('ldi_draft_pks', draftData);
         setLastAutoSaveTime(timeStr);
         setHasDraftAvailable(true);
       } catch (err) {
@@ -248,9 +248,8 @@ export const CustomPksModal: React.FC<CustomPksModalProps> = ({
 
   const handleLoadDraft = () => {
     try {
-      const saved = localStorage.getItem('ldi_draft_pks');
-      if (saved) {
-        const draft = JSON.parse(saved);
+      const draft = getDecryptedItem<any>('ldi_draft_pks');
+      if (draft) {
         if (draft.selectedCustomerId) setSelectedCustomerId(draft.selectedCustomerId);
         if (draft.customerName) setCustomerName(draft.customerName);
         if (draft.customerRepresentative) setCustomerRepresentative(draft.customerRepresentative);
@@ -276,7 +275,7 @@ export const CustomPksModal: React.FC<CustomPksModalProps> = ({
   };
 
   const handleClearDraft = () => {
-    localStorage.removeItem('ldi_draft_pks');
+    removeEncryptedItem('ldi_draft_pks');
     setHasDraftAvailable(false);
     setLastAutoSaveTime(null);
   };
@@ -424,7 +423,7 @@ export const CustomPksModal: React.FC<CustomPksModalProps> = ({
     };
 
     onSave(pksPayload);
-    localStorage.removeItem('ldi_draft_pks');
+    removeEncryptedItem('ldi_draft_pks');
     setHasDraftAvailable(false);
     setLastAutoSaveTime(null);
     onClose();

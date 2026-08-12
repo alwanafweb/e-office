@@ -26,6 +26,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { CompanyProfile, Customer, Invoice, ItemService, PaymentRecord, PKS, ServiceCategory, SPH } from '../types';
+import { getDecryptedItem, setEncryptedItem, removeEncryptedItem } from '../utils/crypto';
 import { formatDateIndonesian, formatIDR, generateDocNumber } from '../utils/formatters';
 import { COMPANY_PROFILE } from '../data/initialData';
 import { exportInvoicesToExcel } from '../utils/excelExport';
@@ -134,11 +135,10 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
   // Check if draft exists on mount / form open
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('ldi_draft_invoice');
+      const saved = getDecryptedItem<any>('ldi_draft_invoice');
       if (saved) {
         setHasDraftAvailable(true);
-        const parsed = JSON.parse(saved);
-        if (parsed.savedAt) setLastAutoSaveTime(parsed.savedAt);
+        if (saved.savedAt) setLastAutoSaveTime(saved.savedAt);
       }
     } catch (e) {
       // Ignore
@@ -172,7 +172,7 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
           customNotes,
           savedAt: timeStr,
         };
-        localStorage.setItem('ldi_draft_invoice', JSON.stringify(draftData));
+        setEncryptedItem('ldi_draft_invoice', draftData);
         setLastAutoSaveTime(timeStr);
         setHasDraftAvailable(true);
       } catch (err) {
@@ -200,9 +200,8 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
 
   const handleLoadDraft = () => {
     try {
-      const saved = localStorage.getItem('ldi_draft_invoice');
-      if (saved) {
-        const draft = JSON.parse(saved);
+      const draft = getDecryptedItem<any>('ldi_draft_invoice');
+      if (draft) {
         if (draft.selectedCustId) setSelectedCustId(draft.selectedCustId);
         if (draft.issueDate) setIssueDate(draft.issueDate);
         if (draft.dueDate) setDueDate(draft.dueDate);
@@ -224,7 +223,7 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
   };
 
   const handleClearDraft = () => {
-    localStorage.removeItem('ldi_draft_invoice');
+    removeEncryptedItem('ldi_draft_invoice');
     setHasDraftAvailable(false);
     setLastAutoSaveTime(null);
   };
@@ -320,7 +319,7 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
     };
 
     onAddInvoice(newInvoice);
-    localStorage.removeItem('ldi_draft_invoice');
+    removeEncryptedItem('ldi_draft_invoice');
     setHasDraftAvailable(false);
     setLastAutoSaveTime(null);
     setIsFormOpen(false);

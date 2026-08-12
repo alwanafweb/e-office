@@ -1,0 +1,6 @@
+{
+  "name": "Sistem Invoice, SPH & PKS - PT Lintas Data Internasional",
+  "description": "Sistem manajemen invoice, penawaran harga (SPH), konversi PKS, CRM pelanggan, dan laporan keuangan PT Lintas Data Internasional dengan kop surat resmi & tanda tangan digital.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

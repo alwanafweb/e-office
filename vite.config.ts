@@ -10,13 +10,18 @@ export default defineConfig(() => {
       react(),
       tailwindcss(),
       obfuscator({
+        include: [/\.[jt]sx?$/],
+        exclude: [/node_modules/],
         compact: true,
         controlFlowFlattening: true,
+        controlFlowFlatteningThreshold: 0.75,
         identifierNamesGenerator: 'hexadecimal',
         selfDefending: true,
         stringArray: true,
         stringArrayEncoding: ['base64'],
         stringArrayThreshold: 0.75,
+        splitStrings: true,
+        transformObjectKeys: true,
       }),
     ],
     resolve: {

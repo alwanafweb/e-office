@@ -9,7 +9,6 @@ import {
   ShieldCheck,
   Lock,
   LogOut,
-  LogIn,
   Globe,
   Menu,
   X,
@@ -159,18 +158,9 @@ export const Navigation: React.FC<NavigationProps> = ({
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <span className="hidden lg:inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-300 text-[11px] px-3 py-1 rounded-full border border-emerald-500/20 font-medium">
+                <span className="inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-300 text-[11px] px-3 py-1 rounded-full border border-emerald-500/20 font-medium">
                   <Globe className="w-3 h-3 text-emerald-400" /> Public Portal
                 </span>
-                <button
-                  type="button"
-                  onClick={() => onOpenAuthModal('dashboard')}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-xl transition text-[11px] font-bold flex items-center gap-1.5 shadow-md shadow-blue-900/30 cursor-pointer"
-                  title="Login Admin System"
-                >
-                  <LogIn className="w-3.5 h-3.5 text-cyan-200" />
-                  <span>Login Admin</span>
-                </button>
               </div>
             )}
 

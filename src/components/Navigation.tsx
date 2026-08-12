@@ -94,17 +94,17 @@ export const Navigation: React.FC<NavigationProps> = ({
                 <h1 className="text-xs sm:text-base font-bold leading-none tracking-tight text-white uppercase truncate max-w-[130px] xs:max-w-[190px] sm:max-w-none">
                   {profile.legalName || 'PT. LINTAS DATA INTERNASIONAL'}
                 </h1>
-                {d1Status === 'connected' && (
+                {currentUser && d1Status === 'connected' && (
                   <span className="hidden sm:inline-flex items-center gap-1 bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Cloudflare D1 Connected
                   </span>
                 )}
-                {d1Status === 'loading' && (
+                {currentUser && d1Status === 'loading' && (
                   <span className="hidden sm:inline-flex items-center gap-1 bg-amber-500/20 text-amber-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border border-amber-500/30">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span> Syncing D1...
                   </span>
                 )}
-                {d1Status === 'offline' && (
+                {currentUser && d1Status === 'offline' && (
                   <span className="hidden sm:inline-flex items-center gap-1 bg-slate-500/20 text-slate-400 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border border-slate-500/30">
                     Local Storage Mode
                   </span>

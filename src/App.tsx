@@ -795,7 +795,7 @@ export default function App() {
 
       {/* Main Content Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {activeTab === 'dashboard' && (
+        {activeTab === 'dashboard' && currentUser && (
           <DashboardView
             invoices={invoices}
             sphList={sphList}
@@ -808,7 +808,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'customers' && (
+        {activeTab === 'customers' && currentUser && (
           <CustomerView
             customers={customers}
             sphList={sphList}
@@ -822,7 +822,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'sph' && (
+        {activeTab === 'sph' && currentUser && (
           <SphView
             sphList={sphList}
             customers={customers}
@@ -837,7 +837,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'pks' && (
+        {activeTab === 'pks' && currentUser && (
           <PksView
             pksList={pksList}
             customers={customers}
@@ -850,7 +850,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'invoices' && (
+        {activeTab === 'invoices' && currentUser && (
           <InvoiceView
             invoices={invoices}
             customers={customers}
@@ -867,7 +867,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'verifyDoc' && (
+        {(activeTab === 'verifyDoc' || (!currentUser && activeTab !== 'verifyDoc')) && (
           <DocVerificationView
             sphList={sphList}
             pksList={pksList}
@@ -878,7 +878,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'settings' && (
+        {activeTab === 'settings' && currentUser && (
           <CompanySettingsView
             companyProfile={companyProfile}
             onUpdateProfile={handleUpdateProfile}

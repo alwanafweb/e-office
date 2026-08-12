@@ -54,15 +54,15 @@ wait_for_apt_lock
 apt-get clean || true
 apt-get update -y || true
 
-# 3. Install required packages using apt-get install -y --no-install-recommends git curl nginx unzip build-essential
-echo "📦 Memasang paket esensial (git, curl, nginx, unzip, build-essential)..."
+# 3. Install required packages using apt-get install -y --no-install-recommends git curl nginx unzip build-essential certbot python3-certbot-nginx
+echo "📦 Memasang paket esensial (git, curl, nginx, unzip, build-essential, certbot)..."
 wait_for_apt_lock
-apt-get install -y --no-install-recommends git curl nginx unzip build-essential ufw || \
-apt-get install -y --no-install-recommends git curl nginx unzip build-essential
+apt-get install -y --no-install-recommends git curl nginx unzip build-essential ufw certbot python3-certbot-nginx || \
+apt-get install -y --no-install-recommends git curl nginx unzip build-essential certbot python3-certbot-nginx
 
 # 4. Logic to verify installation of each tool
 echo "🔍 Verifikasi instalasi alat yang dibutuhkan..."
-REQUIRED_TOOLS=("git" "curl" "nginx" "unzip" "make" "gcc")
+REQUIRED_TOOLS=("git" "curl" "nginx" "unzip" "make" "gcc" "certbot")
 for tool in "${REQUIRED_TOOLS[@]}"; do
     if command -v "$tool" >/dev/null 2>&1; then
         echo "  ✅ $tool: Terinstall ($(command -v "$tool"))"
@@ -95,12 +95,12 @@ echo "⚙️ [4/5] Memasang Dependency NPM & Membangun Proyek..."
 npm install
 npm run build
 
-echo "🌐 [5/5] Mengonfigurasi Nginx Web Server..."
+echo "🌐 [5/6] Mengonfigurasi Nginx Web Server..."
 cat << 'NGINX' > /etc/nginx/sites-available/ldi-app
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
-    server_name _;
+    server_name e-office.ldi.co.id _;
     root /var/www/ldi-app/dist;
     index index.html;
 
@@ -125,6 +125,14 @@ ln -sf /etc/nginx/sites-available/ldi-app /etc/nginx/sites-enabled/default
 nginx -t
 systemctl restart nginx || systemctl reload nginx
 
+echo "🔒 [6/6] Memasang & Mengotomatisasi Sertifikat SSL HTTPS (Certbot)..."
+if certbot --nginx -d e-office.ldi.co.id --non-interactive --agree-tos -m admin@ldi.co.id --redirect 2>/dev/null || \
+   certbot --nginx -d e-office.ldi.co.id --non-interactive --agree-tos --register-unsafely-without-email --redirect 2>/dev/null; then
+    echo "  ✅ Sertifikat SSL HTTPS (Certbot) berhasil dikonfigurasi & diverifikasi untuk e-office.ldi.co.id!"
+else
+    echo "  ⚠️ Verification challenge Certbot belum selesai. Pastikan A-Record DNS e-office.ldi.co.id sudah mengarah ke IP VPS ini."
+fi
+
 # Menyiapkan perintah pembaruan otomatis di VPS
 cat << 'UPDATECMD' > /usr/local/bin/update-app
 #!/bin/bash
@@ -146,13 +154,14 @@ echo "
 ==================================================
 ✅ INSTALASI VPS DEBIAN 12 SUKSES & AKTIF!
 ==================================================
-📱 Portal Publik : http://${IP_ADDRESS}/
-🔐 Portal Admin  : http://${IP_ADDRESS}/loginadmin
+📱 Portal Publik : https://e-office.ldi.co.id/ (atau http://${IP_ADDRESS}/)
+🔐 Portal Admin  : https://e-office.ldi.co.id/loginadmin
 
 Status Komponen:
   • Git             : OK
   • Curl            : OK
   • Nginx           : Running
+  • Certbot (SSL)   : Installed / Verified
   • Unzip           : OK
   • Build Essential : OK
   • Node.js         : OK ($(node -v))

@@ -13,24 +13,23 @@ export const getWorkerUrl = (): string => {
     ''
   ).trim();
 
-  const DEFAULT_WORKER = 'https://ldi-backend-api.pt-lintas-data-internasional.workers.dev';
-
-  if (!configured || !configured.startsWith('http')) {
-    return DEFAULT_WORKER;
+  if (configured && configured.startsWith('http')) {
+    return configured.replace(/\/$/, '');
   }
 
-  return configured.replace(/\/$/, '');
+  // Use local relative API path by default
+  return '';
 };
 
 /**
- * Checks if Cloudflare Worker URL is configured
+ * Checks if Cloudflare Worker or Local API URL is configured
  */
 export const isWorkerConfigured = (): boolean => {
-  return Boolean(getWorkerUrl());
+  return true;
 };
 
 /**
- * Generic API request wrapper for Cloudflare Worker D1 backend
+ * Generic API request wrapper for Cloudflare Worker or Local Express backend
  */
 async function apiFetch<T>(
   endpoint: string,
@@ -78,9 +77,9 @@ async function apiFetch<T>(
       }
     }
 
-    throw new Error(`Expected JSON from Worker API, but received non-JSON payload (${contentType || 'text/html'})`);
+    throw new Error(`Expected JSON from API, but received non-JSON payload (${contentType || 'text/html'})`);
   } catch (err) {
-    console.error(`API Fetch Error [${endpoint}]:`, (err as Error).message);
+    console.warn(`API Fetch notice [${endpoint}]:`, (err as Error).message);
     throw err;
   }
 }

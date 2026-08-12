@@ -9,6 +9,7 @@ trap 'echo "❌ [ERROR] Instalasi gagal pada baris $LINENO. Silakan periksa log 
 
 # Non-interactive mode agar tidak muncul prompt dialog saat instalasi
 export DEBIAN_FRONTEND=noninteractive
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 
 echo "🚀 [1/5] Memperbarui Repositori Paket & Memasang Dependency Debian 12..."
 

@@ -1,9 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { Building, Globe, Mail, Phone, MapPin, CreditCard, ShieldCheck, Save, Check, Upload, Image as ImageIcon, Trash2, Link, FileImage, RotateCcw, PenTool, Plus, Edit3, Star, Copy, PlusCircle, X } from 'lucide-react';
+import { Building, Globe, Mail, Phone, MapPin, CreditCard, ShieldCheck, Save, Check, Upload, Image as ImageIcon, Trash2, Link, FileImage, RotateCcw, PenTool, Plus, Edit3, Star, Copy, PlusCircle, X, Send, Key, RefreshCw } from 'lucide-react';
 import { CompanyProfile } from '../types';
 import { COMPANY_PROFILE } from '../data/initialData';
 import { SignaturePad } from './SignaturePad';
 import { D1ConfigPanel } from './D1ConfigPanel';
+import { sendEmail } from '../api/mailService';
 
 interface CompanySettingsViewProps {
   companyProfile: CompanyProfile;
@@ -34,6 +35,51 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
   const signatureInputRef = useRef<HTMLInputElement>(null);
 
   const [emailTemplateTab, setEmailTemplateTab] = useState<'SPH' | 'PKS' | 'Invoice'>('SPH');
+  const [testEmailStatus, setTestEmailStatus] = useState<{
+    loading: boolean;
+    success?: boolean;
+    message?: string;
+  } | null>(null);
+
+  const handleTestMailketingConnection = async () => {
+    setTestEmailStatus({ loading: true });
+    try {
+      const res = await sendEmail({
+        recipient: profile.email || 'admin@ldi.co.id',
+        subject: '[e-Office LDI] Uji Coba Koneksi Gateway Mailketing',
+        content: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #38bdf8; border-radius: 12px; background-color: #f0f9ff; color: #0c4a6e;">
+            <h3 style="margin-top: 0; color: #0369a1;">✅ Tes Koneksi Email Gateway Berhasil!</h3>
+            <p>Pesan ini mengonfirmasi bahwa API Key Mailketing yang terpasang di <strong>Pengaturan Perusahaan e-Office LDI</strong> aktif dan siap digunakan untuk pengiriman SPH, PKS, dan Invoice.</p>
+            <p style="font-size: 11px; color: #64748b; margin-bottom: 0;">Dikirim pada: ${new Date().toLocaleString('id-ID')}</p>
+          </div>
+        `,
+        senderName: profile.name || 'PT. LINTAS DATA INTERNASIONAL',
+        senderEmail: profile.mailketingSenderEmail || profile.email || 'admin@ldi.co.id',
+        mailketingApiKey: profile.mailketingApiKey,
+      });
+
+      if (res.success) {
+        setTestEmailStatus({
+          loading: false,
+          success: true,
+          message: `✅ Berhasil! Email tes terkirim ke ${profile.email || 'admin@ldi.co.id'} via Mailketing API.`
+        });
+      } else {
+        setTestEmailStatus({
+          loading: false,
+          success: false,
+          message: `❌ ${res.message || 'Gagal terhubung ke Mailketing API.'}`
+        });
+      }
+    } catch (err: any) {
+      setTestEmailStatus({
+        loading: false,
+        success: false,
+        message: `❌ Error: ${err.message || 'Gagal menguji koneksi.'}`
+      });
+    }
+  };
 
   // Custom Bank Account State
   const [isBankModalOpen, setIsBankModalOpen] = useState(false);
@@ -1090,6 +1136,81 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
               placeholder="finance@ldi.co.id, sales@ldi.co.id"
               className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
             />
+          </div>
+
+          {/* MAILKETING API GATEWAY CONFIGURATION */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+              <div className="flex items-center gap-2">
+                <Key className="w-4 h-4 text-blue-700" />
+                <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wide">
+                  Konfigurasi Email Gateway (Mailketing API Key)
+                </h4>
+              </div>
+              <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-semibold">
+                Mailketing API v1
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="font-bold text-slate-700 text-xs block mb-1">
+                  API Key Mailketing *
+                </label>
+                <input
+                  type="text"
+                  value={profile.mailketingApiKey || ''}
+                  onChange={(e) => setProfile({ ...profile, mailketingApiKey: e.target.value })}
+                  placeholder="5aafffa0c30e5a..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 text-xs block mb-1">
+                  Email Pengirim Gateway (Sender Email) *
+                </label>
+                <input
+                  type="email"
+                  value={profile.mailketingSenderEmail || ''}
+                  onChange={(e) => setProfile({ ...profile, mailketingSenderEmail: e.target.value })}
+                  placeholder="admin@ldi.co.id"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <p className="text-[11px] text-slate-500">
+                API Key ini digunakan untuk mengirimkan Invoice, PKS, SPH, dan Kode OTP secara otomatis ke email pelanggan.
+              </p>
+
+              <button
+                type="button"
+                onClick={handleTestMailketingConnection}
+                disabled={testEmailStatus?.loading}
+                className="bg-blue-700 hover:bg-blue-800 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs flex items-center gap-1.5 shadow-sm transition disabled:opacity-50 cursor-pointer"
+              >
+                {testEmailStatus?.loading ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                <span>Uji Koneksi Email</span>
+              </button>
+            </div>
+
+            {testEmailStatus?.message && (
+              <div
+                className={`p-3 rounded-lg text-xs font-semibold ${
+                  testEmailStatus.success
+                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    : 'bg-red-50 text-red-800 border border-red-200'
+                }`}
+              >
+                {testEmailStatus.message}
+              </div>
+            )}
           </div>
 
           {/* Tabs for SPH, PKS, Invoice */}

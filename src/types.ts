@@ -202,6 +202,8 @@ export interface CompanyProfile {
   defaultStampBase64?: string;
   defaultSignatureBase64?: string;
   emailTemplates?: EmailTemplates;
+  mailketingApiKey?: string;
+  mailketingSenderEmail?: string;
 }
 
 export interface FinancialFilter {

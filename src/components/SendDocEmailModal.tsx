@@ -202,15 +202,22 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
         </div>
       `;
 
-      await sendEmail({
+      const mailRes = await sendEmail({
         recipient: recipientEmail,
         cc: ccEmail,
         subject,
         content: formattedContent,
         senderName: companyProfile?.name || 'PT. LINTAS DATA INTERNASIONAL',
-        senderEmail: companyProfile?.email || 'admin@ldi.co.id',
+        senderEmail: companyProfile?.mailketingSenderEmail || companyProfile?.email || 'admin@ldi.co.id',
         attachmentUrl: attachedPdfUrl,
+        mailketingApiKey: companyProfile?.mailketingApiKey,
       });
+
+      if (!mailRes.success) {
+        setIsSending(false);
+        setErrorMsg(mailRes.message || 'Gagal mengirimkan email via Mailketing API. Mohon periksa API Key Mailketing di Pengaturan.');
+        return;
+      }
 
       const msgId = `<MSG-${Date.now().toString(36).toUpperCase()}-LDI-${Math.floor(1000 + Math.random() * 9000)}>`;
       const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -273,9 +280,35 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
         {/* Content Area */}
         <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
           {errorMsg && (
-            <div className="bg-red-50 border border-red-200 text-red-800 p-3 rounded-xl flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-              <span>{errorMsg}</span>
+            <div className="bg-red-50 border-2 border-red-300 text-red-900 p-4 rounded-xl space-y-3">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold text-xs leading-snug">{errorMsg}</p>
+                  <p className="text-[11px] text-red-700 leading-normal">
+                    Pastikan API Key Mailketing Anda di <strong>Pengaturan Perusahaan -&gt; Email & Integrasi</strong> sudah terisi dengan token yang aktif.
+                  </p>
+                </div>
+              </div>
+
+              {/* Fallback actions if sending fails */}
+              <div className="pt-2 border-t border-red-200 flex flex-wrap gap-2">
+                <a
+                  href={`mailto:${encodeURIComponent(recipientEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(messageBody)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-red-700 hover:bg-red-800 text-white font-bold px-3 py-1.5 rounded-lg text-[11px] inline-flex items-center gap-1 shadow-sm transition"
+                >
+                  <Mail className="w-3.5 h-3.5" /> Kirim via Email Client (Gmail/Outlook)
+                </a>
+                <button
+                  type="button"
+                  onClick={() => exportToPdf('printable-document-content', `${type}_${docNumber.replace(/\//g, '_')}.pdf`)}
+                  className="bg-white hover:bg-slate-100 text-red-900 border border-red-300 font-bold px-3 py-1.5 rounded-lg text-[11px] inline-flex items-center gap-1 shadow-sm transition"
+                >
+                  <FileText className="w-3.5 h-3.5 text-red-700" /> Unduh PDF
+                </button>
+              </div>
             </div>
           )}
 

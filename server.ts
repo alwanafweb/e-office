@@ -362,15 +362,21 @@ async function startServer() {
     attachUrl?: string,
     senderName: string = 'PT. LINTAS DATA INTERNASIONAL',
     senderEmail: string = 'support@ldi.co.id',
-    cc?: string
+    cc?: string,
+    customApiKey?: string
   ) {
     try {
+      const activeApiKey = customApiKey?.trim() || MAILKETING_API_KEY;
+
       const params = new URLSearchParams();
-      params.append('api_key', MAILKETING_API_KEY);
+      params.append('api_token', activeApiKey);
+      params.append('api_key', activeApiKey);
       params.append('recipient', recipient);
       params.append('subject', subject);
       params.append('content', content);
+      params.append('from_name', senderName);
       params.append('sender_name', senderName);
+      params.append('from_email', senderEmail);
       params.append('sender_email', senderEmail);
       if (cc && cc.trim()) {
         params.append('cc', cc.trim());
@@ -388,7 +394,39 @@ async function startServer() {
       });
 
       const text = await response.text();
-      console.log(`[MAILKETING API DISPATCH] Recipient: ${recipient} | CC: ${cc || 'none'} | Sender: ${senderName} <${senderEmail}> | Attach: ${attachUrl || 'none'} | Response: ${text.slice(0, 150)}`);
+      console.log(`[MAILKETING API DISPATCH] Recipient: ${recipient} | CC: ${cc || 'none'} | Sender: ${senderName} <${senderEmail}> | Attach: ${attachUrl || 'none'} | Key: ${activeApiKey.slice(0, 6)}... | Response: ${text.slice(0, 180)}`);
+
+      let responseJson: any = null;
+      try {
+        responseJson = JSON.parse(text);
+      } catch (e) {
+        // Text response
+      }
+
+      if (responseJson && (responseJson.status === 'failed' || responseJson.status === 'error' || responseJson.code >= 400)) {
+        const errDetail = responseJson.response || responseJson.message || text;
+        let humanMsg = `Gagal mengirim email via Mailketing API (${errDetail}).`;
+        if (typeof errDetail === 'string' && (errDetail.includes('Access Denied') || errDetail.includes('Invalid Token') || errDetail.includes('User Not Found') || errDetail.includes('Wrong API Token'))) {
+          humanMsg = 'Akses Ditolak Mailketing API (Token API tidak valid atau tidak terdaftar). Silakan periksa kembali API Key Mailketing Anda di Pengaturan Perusahaan -> Email Gateway.';
+        }
+        return { success: false, error: humanMsg, response: text };
+      }
+
+      if (text.includes('Access Denied') || text.includes('Invalid Token') || text.includes('User Not Found') || text.includes('Wrong API Token')) {
+        return {
+          success: false,
+          error: 'Akses Ditolak Mailketing API (Token API tidak valid atau tidak terdaftar). Silakan periksa kembali API Key Mailketing Anda di Pengaturan Perusahaan -> Email Gateway.',
+          response: text
+        };
+      }
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `HTTP Error ${response.status}: Gagal menghubungi server Mailketing.`,
+          response: text
+        };
+      }
 
       // Dispatch individual copies to CC recipients to guarantee inbox delivery
       if (cc && cc.trim()) {
@@ -400,7 +438,8 @@ async function startServer() {
         for (const ccAddr of ccAddresses) {
           try {
             const ccParams = new URLSearchParams();
-            ccParams.append('api_key', MAILKETING_API_KEY);
+            ccParams.append('api_token', activeApiKey);
+            ccParams.append('api_key', activeApiKey);
             ccParams.append('recipient', ccAddr);
             ccParams.append('subject', `[CC / TEMBUSAN] ${subject}`);
             ccParams.append('content', `
@@ -409,7 +448,9 @@ async function startServer() {
               </div>
               ${content}
             `);
+            ccParams.append('from_name', senderName);
             ccParams.append('sender_name', senderName);
+            ccParams.append('from_email', senderEmail);
             ccParams.append('sender_email', senderEmail);
             if (attachUrl) {
               ccParams.append('attach1', attachUrl);
@@ -517,7 +558,7 @@ async function startServer() {
 
   // General Mailketing Proxy Route
   app.post('/api/mail/send', async (req, res) => {
-    const { recipient, cc, ccEmail, subject, htmlContent, content, senderName, senderEmail, attachmentUrl, attachUrl } = req.body || {};
+    const { recipient, cc, ccEmail, subject, htmlContent, content, senderName, senderEmail, attachmentUrl, attachUrl, mailketingApiKey } = req.body || {};
     if (!recipient || !subject) {
       return res.status(400).json({ success: false, message: 'Penerima dan Subjek wajib diisi.' });
     }
@@ -533,14 +574,16 @@ async function startServer() {
       finalAttachUrl,
       senderName || 'PT. LINTAS DATA INTERNASIONAL',
       senderEmail || 'admin@ldi.co.id',
-      finalCc
+      finalCc,
+      mailketingApiKey
     );
 
     return res.json({
       success: result.success,
       message: result.success
         ? `Email terkirim ke ${recipient}${finalCc ? ` (CC: ${finalCc})` : ''} via Mailketing API.`
-        : `Gagal mengirim email: ${result.error}`,
+        : (result.error || 'Gagal mengirim email via Mailketing API.'),
+      error: result.error,
       data: result.response,
     });
   });

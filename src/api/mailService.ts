@@ -11,6 +11,7 @@ export interface MailOptions {
   senderName?: string;
   senderEmail?: string;
   attachmentUrl?: string;
+  mailketingApiKey?: string;
 }
 
 export interface MailServiceResult {
@@ -39,6 +40,7 @@ export async function sendEmail(options: MailOptions): Promise<MailServiceResult
     senderName = 'PT. LINTAS DATA INTERNASIONAL',
     senderEmail = 'admin@ldi.co.id',
     attachmentUrl,
+    mailketingApiKey,
   } = options;
 
   try {
@@ -55,6 +57,7 @@ export async function sendEmail(options: MailOptions): Promise<MailServiceResult
         senderName,
         senderEmail,
         attachmentUrl,
+        mailketingApiKey,
       }),
     });
 

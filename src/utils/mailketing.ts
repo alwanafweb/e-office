@@ -31,6 +31,7 @@ export async function sendMailketingEmail(options: SendEmailOptions): Promise<Ma
   const { recipient, cc, subject, content, senderName = 'PT. LINTAS DATA INTERNASIONAL', senderEmail = 'support@ldi.co.id' } = options;
 
   const params = new URLSearchParams();
+  params.append('api_token', MAILKETING_API_KEY);
   params.append('api_key', MAILKETING_API_KEY);
   params.append('recipient', recipient);
   if (cc && cc.trim()) {
@@ -38,7 +39,9 @@ export async function sendMailketingEmail(options: SendEmailOptions): Promise<Ma
   }
   params.append('subject', subject);
   params.append('content', content);
+  params.append('from_name', senderName);
   params.append('sender_name', senderName);
+  params.append('from_email', senderEmail);
   params.append('sender_email', senderEmail);
 
   try {
@@ -59,26 +62,42 @@ export async function sendMailketingEmail(options: SendEmailOptions): Promise<Ma
       // Ignore text parse errors
     }
 
-    if (response.ok || responseData.status === 'success' || responseData.code === 200) {
+    if (
+      responseData.status === 'failed' ||
+      responseData.status === 'error' ||
+      responseText.includes('Access Denied') ||
+      responseText.includes('Invalid Token')
+    ) {
+      const detail = (responseData.response as string) || (responseData.message as string) || responseText;
+      let msg = `Gagal mengirim email via Mailketing: ${detail}`;
+      if (typeof detail === 'string' && (detail.includes('Access Denied') || detail.includes('Invalid Token'))) {
+        msg = 'Akses Ditolak Mailketing API (Token API tidak valid). Silakan periksa API Key Mailketing di Pengaturan Perusahaan.';
+      }
+      return {
+        success: false,
+        message: msg,
+        data: responseData,
+      };
+    }
+
+    if (response.ok && (responseData.status === 'success' || responseData.code === 200 || !responseData.status)) {
       return {
         success: true,
         message: 'Email berhasil terkirim via Mailketing API.',
         data: responseData,
       };
     } else {
-      // Mailketing standard response check
       return {
-        success: true, // Marked true as API dispatch was processed
-        message: (responseData.message as string) || 'Email berhasil disalurkan ke gateway Mailketing.',
+        success: false,
+        message: (responseData.message as string) || (responseData.response as string) || 'Gagal mengirim email via Mailketing API.',
         data: responseData,
       };
     }
-  } catch (err) {
-    console.warn('Mailketing direct API call note (dispatched with client fallback):', err);
-    // Return graceful success response so frontend modal gives smooth feedback
+  } catch (err: any) {
+    console.error('Mailketing direct API call error:', err);
     return {
-      success: true,
-      message: `Pesan berhasil diproses via Mailketing API (${recipient}).`,
+      success: false,
+      message: `Gagal menghubungkan ke server Mailketing: ${err.message || 'Network Error'}`,
     };
   }
 }

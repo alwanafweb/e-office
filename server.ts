@@ -361,72 +361,119 @@ async function startServer() {
     content: string,
     attachUrl?: string,
     senderName: string = 'PT. LINTAS DATA INTERNASIONAL',
-    senderEmail: string = 'support@ldi.co.id',
+    senderEmail: string = 'alwanemail@gmail.com',
     cc?: string,
     customApiKey?: string
   ) {
-    try {
-      const activeApiKey = customApiKey?.trim() || MAILKETING_API_KEY;
+    const timestamp = new Date().toISOString();
+    const activeApiKey = customApiKey?.trim() || MAILKETING_API_KEY;
 
-      const params = new URLSearchParams();
-      params.append('api_token', activeApiKey);
-      params.append('api_key', activeApiKey);
-      params.append('recipient', recipient);
-      params.append('subject', subject);
-      params.append('content', content);
-      params.append('from_name', senderName);
-      params.append('sender_name', senderName);
-      params.append('from_email', senderEmail);
-      params.append('sender_email', senderEmail);
-      if (cc && cc.trim()) {
-        params.append('cc', cc.trim());
-      }
-      if (attachUrl) {
-        params.append('attach1', attachUrl);
-      }
+    console.log(`\n================================================================================`);
+    console.log(`[MAILKETING LOG ${timestamp}] [START EMAIL DISPATCH]`);
+    console.log(` - Target Recipient : ${recipient}`);
+    console.log(` - CC Recipients   : ${cc || '(none)'}`);
+    console.log(` - Sender Info      : "${senderName}" <${senderEmail}>`);
+    console.log(` - Subject          : ${subject}`);
+    console.log(` - Attachment URL   : ${attachUrl || '(none)'}`);
+    console.log(` - Active API Token : ${activeApiKey ? `${activeApiKey.substring(0, 8)}...` : '(EMPTY)'}`);
+
+    try {
+      const jsonBody = {
+        api_token: activeApiKey,
+        api_key: activeApiKey,
+        recipient: recipient,
+        subject: subject,
+        content: content,
+        from_name: senderName,
+        sender_name: senderName,
+        from_email: senderEmail,
+        sender_email: senderEmail,
+        ...(cc && cc.trim() ? { cc: cc.trim() } : {}),
+        ...(attachUrl ? { attach1: attachUrl } : {}),
+      };
+
+      console.log(`[MAILKETING LOG ${timestamp}] [API REQUEST] Sending HTTP POST to https://api.mailketing.co.id/api/v1/send`);
+      console.log(` - Headers: Content-Type: application/json, Accept: application/json`);
+      console.log(` - Request Body Payload:`, JSON.stringify({ ...jsonBody, api_token: '***HIDDEN***', api_key: '***HIDDEN***' }));
 
       const response = await fetch('https://api.mailketing.co.id/api/v1/send', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
-        body: params.toString(),
+        body: JSON.stringify(jsonBody),
       });
 
+      const responseStatusCode = response.status;
+      const responseStatusText = response.statusText;
       const text = await response.text();
-      console.log(`[MAILKETING API DISPATCH] Recipient: ${recipient} | CC: ${cc || 'none'} | Sender: ${senderName} <${senderEmail}> | Attach: ${attachUrl || 'none'} | Key: ${activeApiKey.slice(0, 6)}... | Response: ${text.slice(0, 180)}`);
+
+      console.log(`[MAILKETING LOG ${timestamp}] [API RESPONSE RECEIVED]`);
+      console.log(` - HTTP Status Code : ${responseStatusCode} ${responseStatusText}`);
+      console.log(` - Raw Response Body: ${text.length > 500 ? text.substring(0, 500) + '... (truncated)' : text}`);
 
       let responseJson: any = null;
       try {
         responseJson = JSON.parse(text);
-      } catch (e) {
-        // Text response
+        console.log(` - Parsed JSON Data :`, responseJson);
+      } catch (jsonErr) {
+        console.warn(` - [WARNING] Response is NOT a valid JSON string.`);
+      }
+
+      // Check if response is HTML (Error page from Cloudflare or unverified sender email issue)
+      if (text.includes('<html') || text.includes('<!DOCTYPE') || text.includes('<!doctype')) {
+        console.error(`[MAILKETING LOG ${timestamp}] [ERROR] Received HTML response from Mailketing API instead of JSON.`);
+        console.error(` - Possible Causes: 1) Sender email (${senderEmail}) is not verified in Mailketing Dashboard. 2) API Key is invalid or rate limited.`);
+        return {
+          success: false,
+          error: `Respon Server Mailketing Berupa Halaman HTML/Error (${responseStatusCode}). Pastikan Email Pengirim (${senderEmail}) sudah terverifikasi di Dashboard Mailketing.co.id.`,
+          response: text,
+        };
       }
 
       if (responseJson && (responseJson.status === 'failed' || responseJson.status === 'error' || responseJson.code >= 400)) {
         const errDetail = responseJson.response || responseJson.message || text;
         let humanMsg = `Gagal mengirim email via Mailketing API (${errDetail}).`;
-        if (typeof errDetail === 'string' && (errDetail.includes('Access Denied') || errDetail.includes('Invalid Token') || errDetail.includes('User Not Found') || errDetail.includes('Wrong API Token'))) {
-          humanMsg = 'Akses Ditolak Mailketing API (Token API tidak valid atau tidak terdaftar). Silakan periksa kembali API Key Mailketing Anda di Pengaturan Perusahaan -> Email Gateway.';
+        if (
+          typeof errDetail === 'string' &&
+          (errDetail.includes('Access Denied') ||
+            errDetail.includes('Invalid Token') ||
+            errDetail.includes('User Not Found') ||
+            errDetail.includes('Wrong API Token'))
+        ) {
+          humanMsg =
+            'Akses Ditolak Mailketing API (Token API tidak valid atau tidak terdaftar). Silakan periksa kembali API Key Mailketing Anda di Pengaturan Perusahaan -> Email Gateway.';
         }
+        console.error(`[MAILKETING LOG ${timestamp}] [FAILED RESPONSE] ${humanMsg}`);
         return { success: false, error: humanMsg, response: text };
       }
 
-      if (text.includes('Access Denied') || text.includes('Invalid Token') || text.includes('User Not Found') || text.includes('Wrong API Token')) {
+      if (
+        text.includes('Access Denied') ||
+        text.includes('Invalid Token') ||
+        text.includes('User Not Found') ||
+        text.includes('Wrong API Token')
+      ) {
+        console.error(`[MAILKETING LOG ${timestamp}] [ACCESS DENIED] Token API Mailketing tidak valid.`);
         return {
           success: false,
-          error: 'Akses Ditolak Mailketing API (Token API tidak valid atau tidak terdaftar). Silakan periksa kembali API Key Mailketing Anda di Pengaturan Perusahaan -> Email Gateway.',
-          response: text
+          error:
+            'Akses Ditolak Mailketing API (Token API tidak valid atau tidak terdaftar). Silakan periksa kembali API Key Mailketing Anda di Pengaturan Perusahaan -> Email Gateway.',
+          response: text,
         };
       }
 
       if (!response.ok) {
+        console.error(`[MAILKETING LOG ${timestamp}] [HTTP ERROR] Status ${responseStatusCode}`);
         return {
           success: false,
-          error: `HTTP Error ${response.status}: Gagal menghubungi server Mailketing.`,
-          response: text
+          error: `HTTP Error ${responseStatusCode}: Gagal menghubungi server Mailketing.`,
+          response: text,
         };
       }
+
+      console.log(`[MAILKETING LOG ${timestamp}] [SUCCESS] Main email successfully dispatched to ${recipient}`);
 
       // Dispatch individual copies to CC recipients to guarantee inbox delivery
       if (cc && cc.trim()) {
@@ -437,42 +484,45 @@ async function startServer() {
 
         for (const ccAddr of ccAddresses) {
           try {
-            const ccParams = new URLSearchParams();
-            ccParams.append('api_token', activeApiKey);
-            ccParams.append('api_key', activeApiKey);
-            ccParams.append('recipient', ccAddr);
-            ccParams.append('subject', `[CC / TEMBUSAN] ${subject}`);
-            ccParams.append('content', `
-              <div style="background-color: #fefce8; border: 1px solid #fef08a; padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-family: Arial, sans-serif; font-size: 12px; color: #854d0e;">
-                📌 <strong>Catatan Tembusan (CC Email):</strong> Email ini dikirimkan sebagai salinan tembusan (CC) kepada Anda untuk arsip & monitoring dokumen resmi. Penerima Utama: <strong>${recipient}</strong>.
-              </div>
-              ${content}
-            `);
-            ccParams.append('from_name', senderName);
-            ccParams.append('sender_name', senderName);
-            ccParams.append('from_email', senderEmail);
-            ccParams.append('sender_email', senderEmail);
-            if (attachUrl) {
-              ccParams.append('attach1', attachUrl);
-            }
+            console.log(`[MAILKETING LOG ${timestamp}] [CC DISPATCH] Dispatching copy to CC address: ${ccAddr}`);
+            const ccJsonBody = {
+              api_token: activeApiKey,
+              api_key: activeApiKey,
+              recipient: ccAddr,
+              subject: `[CC / TEMBUSAN] ${subject}`,
+              content: `
+                <div style="background-color: #fefce8; border: 1px solid #fef08a; padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-family: Arial, sans-serif; font-size: 12px; color: #854d0e;">
+                  📌 <strong>Catatan Tembusan (CC Email):</strong> Email ini dikirimkan sebagai salinan tembusan (CC) kepada Anda untuk arsip & monitoring dokumen resmi. Penerima Utama: <strong>${recipient}</strong>.
+                </div>
+                ${content}
+              `,
+              from_name: senderName,
+              sender_name: senderName,
+              from_email: senderEmail,
+              sender_email: senderEmail,
+              ...(attachUrl ? { attach1: attachUrl } : {}),
+            };
 
-            await fetch('https://api.mailketing.co.id/api/v1/send', {
+            const ccRes = await fetch('https://api.mailketing.co.id/api/v1/send', {
               method: 'POST',
               headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
               },
-              body: ccParams.toString(),
+              body: JSON.stringify(ccJsonBody),
             });
-            console.log(`[MAILKETING CC DISPATCH] Successfully dispatched CC copy to ${ccAddr}`);
+            const ccText = await ccRes.text();
+            console.log(`[MAILKETING LOG ${timestamp}] [CC DISPATCH SUCCESS] Result for ${ccAddr}: ${ccText.substring(0, 150)}`);
           } catch (ccErr: any) {
-            console.warn(`[MAILKETING CC DISPATCH WARNING] Could not dispatch to CC ${ccAddr}: ${ccErr.message}`);
+            console.warn(`[MAILKETING LOG ${timestamp}] [CC DISPATCH WARNING] Could not dispatch to CC ${ccAddr}: ${ccErr.message}`);
           }
         }
       }
 
+      console.log(`[MAILKETING LOG ${timestamp}] [PROCESS COMPLETE]\n================================================================================\n`);
       return { success: true, response: text };
     } catch (err: any) {
-      console.error(`[MAILKETING ERROR]: ${err.message}`);
+      console.error(`[MAILKETING LOG ${timestamp}] [EXCEPTION ERROR]: ${err.message}`);
       return { success: false, error: err.message };
     }
   }

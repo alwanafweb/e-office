@@ -45,33 +45,37 @@ async function sendDirectMailketing(options: MailOptions): Promise<MailServiceRe
 
   const apiKey = (mailketingApiKey && mailketingApiKey.trim()) || getMailketingApiKey();
 
-  const params = new URLSearchParams();
-  params.append('api_token', apiKey);
-  params.append('api_key', apiKey);
-  params.append('recipient', recipient);
-  if (cc && cc.trim()) {
-    params.append('cc', cc.trim());
-  }
-  params.append('subject', subject);
-  params.append('content', content);
-  params.append('from_name', senderName);
-  params.append('sender_name', senderName);
-  params.append('from_email', senderEmail);
-  params.append('sender_email', senderEmail);
-  if (attachmentUrl) {
-    params.append('attach1', attachmentUrl);
-  }
+  const jsonPayload = {
+    api_token: apiKey,
+    api_key: apiKey,
+    recipient: recipient,
+    subject: subject,
+    content: content,
+    from_name: senderName,
+    sender_name: senderName,
+    from_email: senderEmail,
+    sender_email: senderEmail,
+    ...(cc && cc.trim() ? { cc: cc.trim() } : {}),
+    ...(attachmentUrl ? { attach1: attachmentUrl } : {}),
+  };
+
+  console.log(`[MAILKETING DIRECT CLIENT LOG] Sending HTTP POST to ${MAILKETING_API_URL}`);
+  console.log(` - Headers: Content-Type: application/json, Accept: application/json`);
+  console.log(` - Sender: "${senderName}" <${senderEmail}> | Recipient: ${recipient}`);
 
   try {
     const response = await fetch(MAILKETING_API_URL, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
-      body: params.toString(),
+      body: JSON.stringify(jsonPayload),
     });
 
     const responseText = await response.text();
+    console.log(`[MAILKETING DIRECT CLIENT LOG] Status: ${response.status} | Response: ${responseText}`);
+
     let responseData: any = {};
     try {
       responseData = JSON.parse(responseText);
@@ -83,6 +87,14 @@ async function sendDirectMailketing(options: MailOptions): Promise<MailServiceRe
       return {
         success: true,
         message: `Email terkirim ke ${recipient} via Mailketing API.`,
+        data: responseData,
+      };
+    }
+
+    if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+      return {
+        success: false,
+        message: `Menerima respon HTML error dari Mailketing API. Pastikan email pengirim (${senderEmail}) telah terverifikasi di dashboard Mailketing.`,
         data: responseData,
       };
     }

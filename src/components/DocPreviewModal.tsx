@@ -460,12 +460,12 @@ const SphDocumentView: React.FC<{ sph: SPH; showStamp: boolean; companyProfile?:
         </h3>
         <table className="w-full border-collapse border border-slate-300 text-left text-xs">
           <thead>
-            <tr className="bg-blue-950 text-white font-bold">
-              <th className="p-2 border border-slate-300 w-8 text-center">No</th>
-              <th className="p-2 border border-slate-300">Deskripsi Layanan</th>
-              <th className="p-2 border border-slate-300 text-center w-16">Vol</th>
-              <th className="p-2 border border-slate-300 text-right w-28">Harga Satuan</th>
-              <th className="p-2 border border-slate-300 text-right w-28">Total Harga</th>
+            <tr className="bg-blue-950 text-white font-bold" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>
+              <th className="p-2 border border-slate-300 w-8 text-center text-white font-bold" style={{ color: '#ffffff', backgroundColor: '#0f172a' }}>No</th>
+              <th className="p-2 border border-slate-300 text-white font-bold" style={{ color: '#ffffff', backgroundColor: '#0f172a' }}>Deskripsi Layanan</th>
+              <th className="p-2 border border-slate-300 text-center w-16 text-white font-bold" style={{ color: '#ffffff', backgroundColor: '#0f172a' }}>Vol</th>
+              <th className="p-2 border border-slate-300 text-right w-28 text-white font-bold" style={{ color: '#ffffff', backgroundColor: '#0f172a' }}>Harga Satuan</th>
+              <th className="p-2 border border-slate-300 text-right w-28 text-white font-bold" style={{ color: '#ffffff', backgroundColor: '#0f172a' }}>Total Harga</th>
             </tr>
           </thead>
           <tbody>
@@ -824,12 +824,12 @@ const InvoiceDocumentView: React.FC<{ invoice: Invoice; showStamp: boolean; comp
       <div>
         <table className="w-full border-collapse border border-slate-300 text-left text-xs">
           <thead>
-            <tr className="bg-blue-950 text-white font-bold">
-              <th className="p-2.5 border border-slate-300 w-8 text-center">No</th>
-              <th className="p-2.5 border border-slate-300">Deskripsi Item Penagihan</th>
-              <th className="p-2.5 border border-slate-300 text-center w-20">Volume</th>
-              <th className="p-2.5 border border-slate-300 text-right w-28">Harga Satuan</th>
-              <th className="p-2.5 border border-slate-300 text-right w-32">Total Harga</th>
+            <tr className="bg-blue-950 text-white font-bold" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>
+              <th className="p-2.5 border border-slate-300 w-8 text-center text-white font-bold" style={{ color: '#ffffff', backgroundColor: '#0f172a' }}>No</th>
+              <th className="p-2.5 border border-slate-300 text-white font-bold" style={{ color: '#ffffff', backgroundColor: '#0f172a' }}>Deskripsi Item Penagihan</th>
+              <th className="p-2.5 border border-slate-300 text-center w-20 text-white font-bold" style={{ color: '#ffffff', backgroundColor: '#0f172a' }}>Volume</th>
+              <th className="p-2.5 border border-slate-300 text-right w-28 text-white font-bold" style={{ color: '#ffffff', backgroundColor: '#0f172a' }}>Harga Satuan</th>
+              <th className="p-2.5 border border-slate-300 text-right w-32 text-white font-bold" style={{ color: '#ffffff', backgroundColor: '#0f172a' }}>Total Harga</th>
             </tr>
           </thead>
           <tbody>

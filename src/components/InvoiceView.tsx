@@ -24,12 +24,18 @@ import {
   Unlock,
   Save,
   RotateCcw,
+  Repeat,
+  Bot,
+  Zap,
+  BellRing,
+  Send,
 } from 'lucide-react';
 import { CompanyProfile, Customer, Invoice, ItemService, PaymentRecord, PKS, ServiceCategory, SPH } from '../types';
 import { getDecryptedItem, setEncryptedItem, removeEncryptedItem } from '../utils/crypto';
 import { formatDateIndonesian, formatIDR, generateDocNumber } from '../utils/formatters';
 import { COMPANY_PROFILE } from '../data/initialData';
 import { exportInvoicesToExcel } from '../utils/excelExport';
+import { apiGetRecurringInvoiceStatus, apiTriggerRecurringInvoiceCron } from '../api/client';
 
 export const getInvoicePaidAmount = (inv: Invoice): number => {
   if (typeof inv.paidAmount === 'number') return inv.paidAmount;
@@ -114,6 +120,15 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
   const [sphRef, setSphRef] = useState('');
   const [pksRef, setPksRef] = useState('');
   const [useTax, setUseTax] = useState<boolean>(true);
+  const [billingType, setBillingType] = useState<'one_time' | 'monthly'>('one_time');
+  const [autoSendMonthly, setAutoSendMonthly] = useState<boolean>(true);
+
+  // Billing Type Filter & Cron Modal States
+  const [billingTypeFilter, setBillingTypeFilter] = useState<'Semua' | 'one_time' | 'monthly'>('Semua');
+  const [isCronModalOpen, setIsCronModalOpen] = useState<boolean>(false);
+  const [isTriggeringCron, setIsTriggeringCron] = useState<boolean>(false);
+  const [cronNotice, setCronNotice] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const [cronStatus, setCronStatus] = useState<any>(null);
 
   const [items, setItems] = useState<ItemService[]>([
     {
@@ -163,6 +178,8 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
           sphRef,
           pksRef,
           useTax,
+          billingType,
+          autoSendMonthly,
           items,
           selectedBankKey,
           customBankName,
@@ -189,6 +206,8 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
     sphRef,
     pksRef,
     useTax,
+    billingType,
+    autoSendMonthly,
     items,
     selectedBankKey,
     customBankName,
@@ -208,6 +227,8 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
         if (draft.sphRef !== undefined) setSphRef(draft.sphRef);
         if (draft.pksRef !== undefined) setPksRef(draft.pksRef);
         if (typeof draft.useTax === 'boolean') setUseTax(draft.useTax);
+        if (draft.billingType) setBillingType(draft.billingType);
+        if (typeof draft.autoSendMonthly === 'boolean') setAutoSendMonthly(draft.autoSendMonthly);
         if (Array.isArray(draft.items)) setItems(draft.items);
         if (draft.selectedBankKey) setSelectedBankKey(draft.selectedBankKey);
         if (draft.customBankName) setCustomBankName(draft.customBankName);
@@ -222,6 +243,48 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
     }
   };
 
+  const fetchCronStatus = async () => {
+    try {
+      const res = await apiGetRecurringInvoiceStatus();
+      if (res && res.success) {
+        setCronStatus(res);
+      }
+    } catch (err) {
+      console.error('Error fetching cron status:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchCronStatus();
+  }, []);
+
+  const handleManualTriggerCron = async () => {
+    setIsTriggeringCron(true);
+    setCronNotice(null);
+    try {
+      const res = await apiTriggerRecurringInvoiceCron();
+      if (res && res.success) {
+        setCronNotice({
+          type: 'success',
+          msg: res.message || `Cronjob berhasil dieksekusi. ${res.processedCount} email pengingat tagihan bulanan dikirim.`,
+        });
+        await fetchCronStatus();
+      } else {
+        setCronNotice({
+          type: 'error',
+          msg: 'Gagal menjalankan cronjob otomatis.',
+        });
+      }
+    } catch (err: any) {
+      setCronNotice({
+        type: 'error',
+        msg: `Error: ${err.message || 'Gagal terhubung ke server cron.'}`,
+      });
+    } finally {
+      setIsTriggeringCron(false);
+    }
+  };
+
   const handleClearDraft = () => {
     removeEncryptedItem('ldi_draft_invoice');
     setHasDraftAvailable(false);
@@ -233,7 +296,11 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
       inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       inv.customerName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'Semua' || inv.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesBillingType =
+      billingTypeFilter === 'Semua' ||
+      (billingTypeFilter === 'monthly' && (inv.billingType === 'monthly' || inv.autoSendMonthly)) ||
+      (billingTypeFilter === 'one_time' && (inv.billingType === 'one_time' || !inv.billingType));
+    return matchesSearch && matchesStatus && matchesBillingType;
   });
 
   const handleAddItem = () => {
@@ -317,6 +384,8 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
       pksReference: pksRef || undefined,
       issueDate,
       dueDate,
+      billingType,
+      autoSendMonthly: billingType === 'monthly' ? autoSendMonthly : false,
       items,
       subtotal,
       discountTotal,
@@ -463,6 +532,21 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
 
         <div className="flex flex-wrap items-center gap-2.5 self-start md:self-auto">
           <button
+            onClick={() => {
+              fetchCronStatus();
+              setIsCronModalOpen(true);
+            }}
+            className="flex items-center gap-2 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-300 font-bold text-xs px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer"
+            title="Kelola & Jalankan Cronjob Pengingat Tagihan Bulanan Otomatis (Tanggal 1)"
+          >
+            <Bot className="w-4 h-4 text-purple-700" />
+            <span>Cronjob Bulanan</span>
+            <span className="bg-purple-700 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold ml-1">
+              {invoices.filter((i) => i.billingType === 'monthly' || i.autoSendMonthly).length}
+            </span>
+          </button>
+
+          <button
             onClick={() => exportInvoicesToExcel(filteredInvoices, 'Daftar_Invoice_PT_LDI')}
             className="flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer"
             title="Unduh seluruh data invoice ke format file Microsoft Excel (.xlsx)"
@@ -560,19 +644,34 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
           />
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-slate-600">Status Pembayaran:</span>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none"
-          >
-            <option value="Semua">Semua Status</option>
-            <option value="Lunas">Lunas (Paid)</option>
-            <option value="Dibayar Sebagian">Dibayar Sebagian (Partial)</option>
-            <option value="Belum Bayar">Belum Bayar (Unpaid)</option>
-            <option value="Jatuh Tempo">Jatuh Tempo (Overdue)</option>
-          </select>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-600">Tipe Penagihan:</span>
+            <select
+              value={billingTypeFilter}
+              onChange={(e) => setBillingTypeFilter(e.target.value as any)}
+              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-purple-900 focus:outline-none"
+            >
+              <option value="Semua">Semua Tipe</option>
+              <option value="monthly">Bulanan (Berlangganan)</option>
+              <option value="one_time">One-Time Charge</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-600">Status Pembayaran:</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none"
+            >
+              <option value="Semua">Semua Status</option>
+              <option value="Lunas">Lunas (Paid)</option>
+              <option value="Dibayar Sebagian">Dibayar Sebagian (Partial)</option>
+              <option value="Belum Bayar">Belum Bayar (Unpaid)</option>
+              <option value="Jatuh Tempo">Jatuh Tempo (Overdue)</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -602,7 +701,18 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
                   return (
                     <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-50/80">
                       <td className="p-3.5">
-                        <p className="font-mono font-bold text-blue-900">{inv.invoiceNumber}</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-mono font-bold text-blue-900">{inv.invoiceNumber}</p>
+                          {inv.billingType === 'monthly' || inv.autoSendMonthly ? (
+                            <span className="bg-purple-100 text-purple-900 border border-purple-300 text-[9px] font-extrabold px-1.5 py-0.2 rounded-full inline-flex items-center gap-1" title="Tagihan Berlangganan Bulanan (Auto Cronjob Tgl 1)">
+                              <Repeat className="w-2.5 h-2.5 text-purple-700" /> Bulanan
+                            </span>
+                          ) : (
+                            <span className="bg-slate-100 text-slate-600 text-[9px] font-medium px-1.5 py-0.2 rounded">
+                              One-Time
+                            </span>
+                          )}
+                        </div>
                         {inv.bankInfo && (
                           <p className="text-[10px] text-slate-500 font-sans mt-0.5 flex items-center gap-1">
                             <CreditCard className="w-3 h-3 text-emerald-600 shrink-0" />
@@ -859,6 +969,93 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
                     className="w-full p-2.5 border border-slate-300 rounded-lg bg-white font-medium text-rose-700 font-bold"
                   />
                 </div>
+              </div>
+
+              {/* Billing Type Selector: One Time vs Bulanan (Cronjob Auto-Reminder) */}
+              <div className="bg-purple-50/80 p-4 rounded-xl border border-purple-200 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <h4 className="font-bold text-purple-950 uppercase tracking-wide text-xs flex items-center gap-1.5">
+                    <Repeat className="w-4 h-4 text-purple-700" />
+                    Tipe Penagihan & Pengingat Otomatis (Cronjob)
+                  </h4>
+                  <span className="text-[10px] bg-purple-200/80 text-purple-900 font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                    <Bot className="w-3 h-3 text-purple-700" /> Auto-Reminder Tanggal 1
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label
+                    onClick={() => setBillingType('one_time')}
+                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition flex items-start gap-3 ${
+                      billingType === 'one_time'
+                        ? 'bg-white border-purple-600 shadow-xs ring-1 ring-purple-600'
+                        : 'bg-white/60 border-slate-200 hover:border-purple-300'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="billingType"
+                      checked={billingType === 'one_time'}
+                      onChange={() => setBillingType('one_time')}
+                      className="mt-0.5 text-purple-600 focus:ring-purple-500 w-4 h-4"
+                    />
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-slate-900 text-xs">One-Time Charge</span>
+                        <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-medium">Sekali Bayar</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                        Tagihan tunggal untuk pembelian satu kali / non-berlangganan. Tidak ada pengingat email otomatis bulanan.
+                      </p>
+                    </div>
+                  </label>
+
+                  <label
+                    onClick={() => setBillingType('monthly')}
+                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition flex items-start gap-3 ${
+                      billingType === 'monthly'
+                        ? 'bg-purple-100/60 border-purple-600 shadow-xs ring-1 ring-purple-600'
+                        : 'bg-white/60 border-slate-200 hover:border-purple-300'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="billingType"
+                      checked={billingType === 'monthly'}
+                      onChange={() => setBillingType('monthly')}
+                      className="mt-0.5 text-purple-600 focus:ring-purple-500 w-4 h-4"
+                    />
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-purple-950 text-xs">Bulanan (Berlangganan)</span>
+                        <span className="text-[9px] bg-purple-700 text-white font-extrabold px-1.5 py-0.2 rounded shadow-2xs">Cron Tgl 1</span>
+                      </div>
+                      <p className="text-[11px] text-purple-900 mt-1 leading-relaxed font-medium">
+                        Tagihan rutin bulanan. Setiap <strong>tanggal 1 pukul 00:00 WIB</strong>, sistem Cronjob akan otomatis mengirimkan email pengingat tagihan ke email terdaftar pelanggan.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+
+                {billingType === 'monthly' && (
+                  <div className="bg-white p-3 rounded-lg border border-purple-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-purple-950">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="autoSendCheck"
+                        checked={autoSendMonthly}
+                        onChange={(e) => setAutoSendMonthly(e.target.checked)}
+                        className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4 cursor-pointer"
+                      />
+                      <label htmlFor="autoSendCheck" className="font-bold cursor-pointer text-slate-800">
+                        Kirim otomatis email pengingat via Mailketing API pada tanggal 1 setiap bulan
+                      </label>
+                    </div>
+                    <span className="text-[11px] text-purple-900 font-bold bg-purple-50 px-2 py-1 rounded border border-purple-200">
+                      Email Tujuan: {customers.find((c) => c.id === selectedCustId)?.email || 'Email Pelanggan'}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Rekening Bank Pembayaran Invoice */}
@@ -1467,6 +1664,168 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
           </div>
         );
       })()}
+
+      {/* Cronjob Management & Status Modal */}
+      {isCronModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 my-8 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold shrink-0">
+                  <Bot className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-lg flex items-center gap-2">
+                    Sistem Auto-Reminder Cronjob Tagihan Bulanan
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Pengiriman otomatis invoice rutin setiap tanggal 1 via Mailketing API
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsCronModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Cron Notice Alert */}
+            {cronNotice && (
+              <div
+                className={`p-4 rounded-xl border flex items-start gap-3 text-xs font-semibold ${
+                  cronNotice.type === 'success'
+                    ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                    : 'bg-rose-50 text-rose-900 border-rose-200'
+                }`}
+              >
+                {cronNotice.type === 'success' ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                )}
+                <div>
+                  <p className="font-bold">{cronNotice.msg}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Status Summary Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="bg-purple-50 p-3.5 rounded-xl border border-purple-200">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700">Status Server Cron</span>
+                <p className="text-sm font-black text-purple-950 mt-1 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  AKTIF (Otomatis)
+                </p>
+                <p className="text-[10px] text-purple-800 mt-1 font-medium">
+                  Berjalan di background server
+                </p>
+              </div>
+
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Jadwal Berikutnya</span>
+                <p className="text-sm font-extrabold text-slate-900 mt-1 font-mono">
+                  {cronStatus?.nextScheduledDate || 'Tanggal 1 Bulan Depan'}
+                </p>
+                <p className="text-[10px] text-slate-500 mt-1">Pukul 00:00 WIB</p>
+              </div>
+
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Terakhir Dijalankan</span>
+                <p className="text-xs font-bold text-slate-800 mt-1 font-mono">
+                  {cronStatus?.lastCronRunTime || 'Belum pernah'}
+                </p>
+                <p className="text-[10px] text-slate-500 mt-1">Status: OK</p>
+              </div>
+            </div>
+
+            {/* List of Registered Monthly Invoices */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                  <Repeat className="w-4 h-4 text-purple-700" />
+                  Daftar Tagihan Berlangganan Bulanan ({invoices.filter(i => i.billingType === 'monthly' || i.autoSendMonthly).length} Invoice)
+                </h4>
+                <span className="text-[10px] text-slate-500">
+                  Otomatis diproses tanggal 1
+                </span>
+              </div>
+
+              <div className="border border-slate-200 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-100 text-slate-700 font-bold">
+                    <tr>
+                      <th className="p-2.5">No. Invoice</th>
+                      <th className="p-2.5">Pelanggan</th>
+                      <th className="p-2.5">Email</th>
+                      <th className="p-2.5 text-right">Nominal</th>
+                      <th className="p-2.5 text-center">Tipe Cron</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {invoices.filter(i => i.billingType === 'monthly' || i.autoSendMonthly).length > 0 ? (
+                      invoices
+                        .filter(i => i.billingType === 'monthly' || i.autoSendMonthly)
+                        .map((inv) => (
+                          <tr key={inv.id} className="hover:bg-slate-50">
+                            <td className="p-2.5 font-mono font-bold text-purple-900">{inv.invoiceNumber}</td>
+                            <td className="p-2.5 font-semibold text-slate-800">{inv.customerName}</td>
+                            <td className="p-2.5 text-slate-600 font-mono text-[11px]">{inv.customerEmail}</td>
+                            <td className="p-2.5 text-right font-mono font-bold text-slate-900">{formatIDR(inv.grandTotal)}</td>
+                            <td className="p-2.5 text-center">
+                              <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold">
+                                Bulanan
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className="p-6 text-center text-slate-400 italic">
+                          Belum ada invoice yang diset ke tipe penagihan Bulanan. Saat membuat invoice, pilih &quot;Bulanan (Berlangganan)&quot;.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={handleManualTriggerCron}
+                disabled={isTriggeringCron}
+                className="w-full sm:w-auto px-5 py-2.5 bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 transition"
+              >
+                {isTriggeringCron ? (
+                  <>
+                    <RotateCcw className="w-4 h-4 animate-spin" />
+                    <span>Mengeksekusi Cronjob...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>Jalankan Cronjob Sekarang (Test Dispatch Email Tanggal 1)</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsCronModalOpen(false)}
+                className="w-full sm:w-auto px-4 py-2.5 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

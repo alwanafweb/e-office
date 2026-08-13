@@ -215,6 +215,29 @@ export const apiDeleteInvoice = async (id: string): Promise<{ success: boolean; 
   });
 };
 
+export const apiTriggerRecurringInvoiceCron = async (): Promise<{
+  success: boolean;
+  message: string;
+  processedCount: number;
+  totalMonthly: number;
+  details?: any[];
+  lastRunTime?: string;
+}> => {
+  return apiFetch('/api/invoices/trigger-recurring-cron', {
+    method: 'POST',
+  });
+};
+
+export const apiGetRecurringInvoiceStatus = async (): Promise<{
+  success: boolean;
+  totalMonthlyInvoices: number;
+  lastCronRunTime: string | null;
+  nextScheduledDate: string;
+  recurringInvoices: Invoice[];
+}> => {
+  return apiFetch('/api/invoices/recurring-status');
+};
+
 // ==========================================
 // BATCH / BULK SYNC API
 // ==========================================

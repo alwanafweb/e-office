@@ -127,6 +127,9 @@ export interface Invoice {
   pksReference?: string;
   issueDate: string;
   dueDate: string;
+  billingType?: 'one_time' | 'monthly';
+  autoSendMonthly?: boolean;
+  lastSentRecurringMonth?: string;
   items: ItemService[];
   subtotal: number;
   discountTotal: number;

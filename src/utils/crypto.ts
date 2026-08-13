@@ -1,7 +1,8 @@
+/// <reference types="vite/client" />
 import CryptoJS from 'crypto-js';
 
 // Secret key for AES-256 encryption on client-side storage
-const SECRET_KEY = import.meta.env.VITE_STORAGE_SECRET_KEY || 'LDI_EOFFICE_AES256_SECURE_KEY_2026_@#$';
+const SECRET_KEY = (import.meta as any).env?.VITE_STORAGE_SECRET_KEY || 'LDI_EOFFICE_AES256_SECURE_KEY_2026_@#$';
 
 /**
  * Encrypts any data payload using AES-256

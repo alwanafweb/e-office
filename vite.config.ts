@@ -22,7 +22,7 @@ export default defineConfig(() => {
         stringArrayThreshold: 0.75,
         splitStrings: true,
         transformObjectKeys: true,
-      }),
+      } as any),
     ],
     resolve: {
       alias: {

@@ -161,6 +161,142 @@ async function startServer() {
   // Mailketing API Configuration
   const MAILKETING_API_KEY = process.env.MAILKETING_TOKEN || '5aafffa0c30e5a87235b66f6e1c0e440';
   const otpStore = new Map<string, { code: string; expiresAt: number; type: string; payload?: any }>();
+  let lastCronRunTime: string | null = null;
+
+  // Monthly Recurring Invoice Cron Service
+  async function processMonthlyRecurringInvoices(forceManual = false) {
+    const now = new Date();
+    const currentDay = now.getDate();
+    const currentYYYYMM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    lastCronRunTime = new Date().toLocaleString('id-ID');
+
+    // Only auto-run on 1st of month, unless forced manually by admin
+    if (currentDay !== 1 && !forceManual) {
+      console.log(`[CRONJOB INVOICE] Today is day ${currentDay}, not the 1st. Skipping automatic monthly invoice send.`);
+      return { success: true, processedCount: 0, reason: 'Not 1st of month', currentDay };
+    }
+
+    const recurringInvoices = db.invoices.filter(
+      (inv: any) => inv.billingType === 'monthly' || inv.autoSendMonthly === true
+    );
+
+    let sentCount = 0;
+    const details: any[] = [];
+
+    for (const inv of recurringInvoices) {
+      if (!forceManual && inv.lastSentRecurringMonth === currentYYYYMM) {
+        details.push({ id: inv.id, invoiceNumber: inv.invoiceNumber, status: 'already_sent_this_month' });
+        continue;
+      }
+
+      const recipient = inv.customerEmail;
+      if (!recipient || !recipient.includes('@')) {
+        details.push({ id: inv.id, invoiceNumber: inv.invoiceNumber, status: 'invalid_email' });
+        continue;
+      }
+
+      const formattedTotal = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(inv.grandTotal || 0);
+
+      const subject = `[AUTO-REMINDER TAGIHAN BULANAN] Invoice PT. LDI: ${inv.invoiceNumber} - ${inv.customerName}`;
+      const emailContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #0f172a;">
+          <div style="background-color: #0f172a; color: #ffffff; padding: 20px; border-radius: 12px 12px 0 0; text-align: center;">
+            <h2 style="margin: 0; font-size: 20px; color: #38bdf8;">PT. LINTAS DATA INTERNASIONAL</h2>
+            <p style="margin: 4px 0 0 0; font-size: 12px; color: #94a3b8;">Pengingat Tagihan Rutin Bulanan (Otomatis Tanggal 1)</p>
+          </div>
+          <div style="padding: 24px;">
+            <p style="font-size: 14px;">Kepada Yth. <strong>${inv.customerName}</strong>,</p>
+            <p style="font-size: 13px; color: #334155;">Berikut disampaikan pemberitahuan tagihan layanan rutin bulanan Anda untuk periode bulan ini dari <strong>PT. LINTAS DATA INTERNASIONAL</strong>:</p>
+            
+            <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 16px; margin: 20px 0;">
+              <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 6px 0; color: #64748b; width: 40%;">Nomor Invoice:</td>
+                  <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${inv.invoiceNumber}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; color: #64748b;">Tipe Tagihan:</td>
+                  <td style="padding: 6px 0;"><span style="background-color: #f3e8ff; color: #6b21a8; padding: 2px 8px; border-radius: 12px; font-weight: bold; font-size: 11px;">BERLANGGANAN BULANAN</span></td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; color: #64748b;">Tanggal Terbit:</td>
+                  <td style="padding: 6px 0; font-weight: bold;">${inv.issueDate || 'Tanggal 1 Bulan Ini'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; color: #64748b;">Jatuh Tempo:</td>
+                  <td style="padding: 6px 0; font-weight: bold; color: #b91c1c;">${inv.dueDate || '-'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; color: #64748b;">Total Tagihan:</td>
+                  <td style="padding: 6px 0; font-size: 16px; font-weight: bold; color: #0284c7;">${formattedTotal}</td>
+                </tr>
+              </table>
+            </div>
+
+            <div style="background-color: #f0f9ff; border-left: 4px solid #0284c7; padding: 12px 16px; border-radius: 0 8px 8px 0; margin-bottom: 20px;">
+              <p style="margin: 0; font-size: 12px; color: #0369a1; font-weight: bold;">Rekening Pembayaran Resmi PT. LDI:</p>
+              <p style="margin: 4px 0 0 0; font-size: 13px; font-weight: bold;">${inv.bankInfo?.bankName || 'Bank BCA'} - ${inv.bankInfo?.accountNumber || '8330889988'}</p>
+              <p style="margin: 2px 0 0 0; font-size: 12px; color: #334155;">a.n. ${inv.bankInfo?.accountHolder || 'PT. LINTAS DATA INTERNASIONAL'}</p>
+            </div>
+
+            <p style="font-size: 12px; color: #64748b;">Mohon untuk melakukan konfirmasi pembayaran setelah transfer dilakukan. Lampiran dokumen resmi PDF dapat diunduh langsung via portal e-Office LDI.</p>
+          </div>
+          <div style="border-top: 1px solid #e2e8f0; padding-top: 16px; text-align: center; font-size: 11px; color: #94a3b8;">
+            Email ini dikirim secara otomatis oleh Sistem Cronjob e-Office LDI pada tanggal 1 setiap bulan.<br/>
+            &copy; ${now.getFullYear()} PT. LINTAS DATA INTERNASIONAL. All rights reserved.
+          </div>
+        </div>
+      `;
+
+      const res = await sendMailketingEmailServer(recipient, subject, emailContent);
+      if (res.success) {
+        inv.lastSentRecurringMonth = currentYYYYMM;
+        sentCount++;
+        details.push({ id: inv.id, invoiceNumber: inv.invoiceNumber, status: 'sent', recipient });
+      } else {
+        details.push({ id: inv.id, invoiceNumber: inv.invoiceNumber, status: 'failed', error: res.error });
+      }
+    }
+
+    console.log(`[CRONJOB INVOICE COMPLETED] Sent: ${sentCount}/${recurringInvoices.length} recurring emails.`);
+    return { success: true, processedCount: sentCount, totalMonthly: recurringInvoices.length, details, lastRunTime: lastCronRunTime };
+  }
+
+  // Periodic Cronjob Check (Every 6 hours)
+  setInterval(() => {
+    processMonthlyRecurringInvoices(false).catch((err) => console.error('[CRON ERROR]', err));
+  }, 6 * 60 * 60 * 1000);
+
+  // Manual trigger endpoint for Cronjob
+  app.post('/api/invoices/trigger-recurring-cron', async (req, res) => {
+    try {
+      const result = await processMonthlyRecurringInvoices(true);
+      res.json({
+        success: true,
+        message: `Cronjob berhasil dijalankan. ${result.processedCount} email pengingat tagihan bulanan dikirim.`,
+        ...result,
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Status endpoint for Cronjob
+  app.get('/api/invoices/recurring-status', (req, res) => {
+    const monthlyList = db.invoices.filter((inv: any) => inv.billingType === 'monthly' || inv.autoSendMonthly === true);
+    
+    const now = new Date();
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const nextScheduledDate = `${nextMonth.getDate()} ${nextMonth.toLocaleString('id-ID', { month: 'long' })} ${nextMonth.getFullYear()}`;
+
+    res.json({
+      success: true,
+      totalMonthlyInvoices: monthlyList.length,
+      lastCronRunTime: lastCronRunTime || 'Belum pernah dijalankan sejak server restart',
+      nextScheduledDate,
+      recurringInvoices: monthlyList,
+    });
+  });
 
   // Mailketing Email Dispatcher Helper
   async function sendMailketingEmailServer(recipient: string, subject: string, content: string) {

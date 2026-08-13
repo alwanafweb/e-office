@@ -3,6 +3,7 @@ import { Building, Globe, Mail, Phone, MapPin, CreditCard, ShieldCheck, Save, Ch
 import { CompanyProfile } from '../types';
 import { COMPANY_PROFILE } from '../data/initialData';
 import { SignaturePad } from './SignaturePad';
+import { D1ConfigPanel } from './D1ConfigPanel';
 
 interface CompanySettingsViewProps {
   companyProfile: CompanyProfile;
@@ -291,6 +292,9 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* D1 Cloudflare Backend Config Panel */}
+      <D1ConfigPanel />
 
       <form onSubmit={handleSubmit} className="space-y-6 text-xs">
         {/* LOGO UPLOAD BOX */}

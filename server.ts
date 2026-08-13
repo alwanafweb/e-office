@@ -361,7 +361,8 @@ async function startServer() {
     content: string,
     attachUrl?: string,
     senderName: string = 'PT. LINTAS DATA INTERNASIONAL',
-    senderEmail: string = 'support@ldi.co.id'
+    senderEmail: string = 'support@ldi.co.id',
+    cc?: string
   ) {
     try {
       const params = new URLSearchParams();
@@ -371,6 +372,9 @@ async function startServer() {
       params.append('content', content);
       params.append('sender_name', senderName);
       params.append('sender_email', senderEmail);
+      if (cc && cc.trim()) {
+        params.append('cc', cc.trim());
+      }
       if (attachUrl) {
         params.append('attach1', attachUrl);
       }
@@ -384,7 +388,47 @@ async function startServer() {
       });
 
       const text = await response.text();
-      console.log(`[MAILKETING API DISPATCH] Recipient: ${recipient} | Sender: ${senderName} <${senderEmail}> | Attach: ${attachUrl || 'none'} | Response: ${text.slice(0, 150)}`);
+      console.log(`[MAILKETING API DISPATCH] Recipient: ${recipient} | CC: ${cc || 'none'} | Sender: ${senderName} <${senderEmail}> | Attach: ${attachUrl || 'none'} | Response: ${text.slice(0, 150)}`);
+
+      // Dispatch individual copies to CC recipients to guarantee inbox delivery
+      if (cc && cc.trim()) {
+        const ccAddresses = cc
+          .split(/[,;]/)
+          .map((addr) => addr.trim())
+          .filter((addr) => addr && addr.includes('@') && addr.toLowerCase() !== recipient.toLowerCase());
+
+        for (const ccAddr of ccAddresses) {
+          try {
+            const ccParams = new URLSearchParams();
+            ccParams.append('api_key', MAILKETING_API_KEY);
+            ccParams.append('recipient', ccAddr);
+            ccParams.append('subject', `[CC / TEMBUSAN] ${subject}`);
+            ccParams.append('content', `
+              <div style="background-color: #fefce8; border: 1px solid #fef08a; padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-family: Arial, sans-serif; font-size: 12px; color: #854d0e;">
+                📌 <strong>Catatan Tembusan (CC Email):</strong> Email ini dikirimkan sebagai salinan tembusan (CC) kepada Anda untuk arsip & monitoring dokumen resmi. Penerima Utama: <strong>${recipient}</strong>.
+              </div>
+              ${content}
+            `);
+            ccParams.append('sender_name', senderName);
+            ccParams.append('sender_email', senderEmail);
+            if (attachUrl) {
+              ccParams.append('attach1', attachUrl);
+            }
+
+            await fetch('https://api.mailketing.co.id/api/v1/send', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              body: ccParams.toString(),
+            });
+            console.log(`[MAILKETING CC DISPATCH] Successfully dispatched CC copy to ${ccAddr}`);
+          } catch (ccErr: any) {
+            console.warn(`[MAILKETING CC DISPATCH WARNING] Could not dispatch to CC ${ccAddr}: ${ccErr.message}`);
+          }
+        }
+      }
+
       return { success: true, response: text };
     } catch (err: any) {
       console.error(`[MAILKETING ERROR]: ${err.message}`);
@@ -473,13 +517,14 @@ async function startServer() {
 
   // General Mailketing Proxy Route
   app.post('/api/mail/send', async (req, res) => {
-    const { recipient, subject, htmlContent, content, senderName, senderEmail, attachmentUrl, attachUrl } = req.body || {};
+    const { recipient, cc, ccEmail, subject, htmlContent, content, senderName, senderEmail, attachmentUrl, attachUrl } = req.body || {};
     if (!recipient || !subject) {
       return res.status(400).json({ success: false, message: 'Penerima dan Subjek wajib diisi.' });
     }
 
     const finalContent = htmlContent || content || '<p>Notifikasi e-Office LDI</p>';
     const finalAttachUrl = attachmentUrl || attachUrl;
+    const finalCc = cc || ccEmail;
 
     const result = await sendMailketingEmailServer(
       recipient,
@@ -487,12 +532,15 @@ async function startServer() {
       finalContent,
       finalAttachUrl,
       senderName || 'PT. LINTAS DATA INTERNASIONAL',
-      senderEmail || 'admin@ldi.co.id'
+      senderEmail || 'admin@ldi.co.id',
+      finalCc
     );
 
     return res.json({
       success: result.success,
-      message: result.success ? `Email terkirim ke ${recipient} via Mailketing API.` : `Gagal mengirim email: ${result.error}`,
+      message: result.success
+        ? `Email terkirim ke ${recipient}${finalCc ? ` (CC: ${finalCc})` : ''} via Mailketing API.`
+        : `Gagal mengirim email: ${result.error}`,
       data: result.response,
     });
   });

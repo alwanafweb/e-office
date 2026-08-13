@@ -118,6 +118,7 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
     messageId: string;
     sentTime: string;
     recipient: string;
+    cc?: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -196,6 +197,7 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
 
       await sendEmail({
         recipient: recipientEmail,
+        cc: ccEmail,
         subject,
         content: formattedContent,
         senderName: companyProfile?.name || 'PT. LINTAS DATA INTERNASIONAL',
@@ -210,6 +212,7 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
         messageId: msgId,
         sentTime: timeStr,
         recipient: recipientEmail,
+        cc: ccEmail,
       });
 
       setIsSending(false);
@@ -294,6 +297,12 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
                   <span>Penerima Utama:</span>
                   <span className="font-bold text-blue-900">{deliveryLog.recipient}</span>
                 </div>
+                {deliveryLog.cc && (
+                  <div className="flex justify-between items-center text-slate-600">
+                    <span>Tembusan (CC):</span>
+                    <span className="font-bold text-indigo-900">{deliveryLog.cc}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center text-slate-600">
                   <span>Lampiran Terlampir:</span>
                   <span className="font-bold text-emerald-700">📄 {type}_{docNumber.replace(/\//g, '_')}.pdf</span>

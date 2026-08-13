@@ -5,6 +5,7 @@
 
 export interface MailOptions {
   recipient: string;
+  cc?: string;
   subject: string;
   content: string;
   senderName?: string;
@@ -32,6 +33,7 @@ const MAILKETING_API_URL = 'https://api.mailketing.co.id/api/v1/send';
 export async function sendEmail(options: MailOptions): Promise<MailServiceResult> {
   const {
     recipient,
+    cc,
     subject,
     content,
     senderName = 'PT. LINTAS DATA INTERNASIONAL',
@@ -47,6 +49,7 @@ export async function sendEmail(options: MailOptions): Promise<MailServiceResult
       },
       body: JSON.stringify({
         recipient,
+        cc,
         subject,
         htmlContent: content,
         senderName,

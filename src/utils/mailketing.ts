@@ -11,6 +11,7 @@ const MAILKETING_ENDPOINT = 'https://api.mailketing.co.id/api/v1/send';
 
 export interface SendEmailOptions {
   recipient: string;
+  cc?: string;
   subject: string;
   content: string;
   senderName?: string;
@@ -27,11 +28,14 @@ export interface MailketingResponse {
  * Mengirim Email Menggunakan API Mailketing (POST Request)
  */
 export async function sendMailketingEmail(options: SendEmailOptions): Promise<MailketingResponse> {
-  const { recipient, subject, content, senderName = 'PT. LINTAS DATA INTERNASIONAL', senderEmail = 'support@ldi.co.id' } = options;
+  const { recipient, cc, subject, content, senderName = 'PT. LINTAS DATA INTERNASIONAL', senderEmail = 'support@ldi.co.id' } = options;
 
   const params = new URLSearchParams();
   params.append('api_key', MAILKETING_API_KEY);
   params.append('recipient', recipient);
+  if (cc && cc.trim()) {
+    params.append('cc', cc.trim());
+  }
   params.append('subject', subject);
   params.append('content', content);
   params.append('sender_name', senderName);

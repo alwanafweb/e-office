@@ -23,10 +23,109 @@ export interface MailServiceResult {
 const getMailketingApiKey = (): string => {
   const metaEnv = (import.meta as unknown as { env?: Record<string, string | undefined> }).env || {};
   const proc = (typeof process !== 'undefined' ? process.env : {}) as Record<string, string | undefined>;
-  return metaEnv.VITE_MAILKETING_API_KEY || proc.VITE_MAILKETING_API_KEY || '5aafffa0c30e5a87235b66f6e1c0e440';
+  return metaEnv.VITE_MAILKETING_API_KEY || proc.VITE_MAILKETING_API_KEY || 'e6f901cb964cd1c0fb59453f3450329d';
 };
 
 const MAILKETING_API_URL = 'https://api.mailketing.co.id/api/v1/send';
+
+/**
+ * Direct client-side call to Mailketing API (used as fallback when backend /api/mail/send is unavailable or returns HTML)
+ */
+async function sendDirectMailketing(options: MailOptions): Promise<MailServiceResult> {
+  const {
+    recipient,
+    cc,
+    subject,
+    content,
+    senderName = 'PT. LINTAS DATA INTERNASIONAL',
+    senderEmail = 'alwanemail@gmail.com',
+    attachmentUrl,
+    mailketingApiKey,
+  } = options;
+
+  const apiKey = (mailketingApiKey && mailketingApiKey.trim()) || getMailketingApiKey();
+
+  const params = new URLSearchParams();
+  params.append('api_token', apiKey);
+  params.append('api_key', apiKey);
+  params.append('recipient', recipient);
+  if (cc && cc.trim()) {
+    params.append('cc', cc.trim());
+  }
+  params.append('subject', subject);
+  params.append('content', content);
+  params.append('from_name', senderName);
+  params.append('sender_name', senderName);
+  params.append('from_email', senderEmail);
+  params.append('sender_email', senderEmail);
+  if (attachmentUrl) {
+    params.append('attach1', attachmentUrl);
+  }
+
+  try {
+    const response = await fetch(MAILKETING_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+    });
+
+    const responseText = await response.text();
+    let responseData: any = {};
+    try {
+      responseData = JSON.parse(responseText);
+    } catch {
+      // Ignore text parse
+    }
+
+    if (responseData.status === 'success' || responseData.response === 'Mail Sent' || responseText.includes('Mail Sent')) {
+      return {
+        success: true,
+        message: `Email terkirim ke ${recipient} via Mailketing API.`,
+        data: responseData,
+      };
+    }
+
+    if (
+      responseData.status === 'failed' ||
+      responseData.status === 'error' ||
+      responseText.includes('Access Denied') ||
+      responseText.includes('Invalid Token') ||
+      responseText.includes('User Not Found') ||
+      responseText.includes('Wrong API Token')
+    ) {
+      const errDetail = responseData.response || responseData.message || responseText;
+      let msg = `Gagal mengirim email via Mailketing: ${errDetail}`;
+      if (
+        typeof errDetail === 'string' &&
+        (errDetail.includes('Access Denied') ||
+          errDetail.includes('Invalid Token') ||
+          errDetail.includes('User Not Found') ||
+          errDetail.includes('Wrong API Token'))
+      ) {
+        msg = 'Akses Ditolak Mailketing API (Token API tidak valid atau tidak terdaftar). Silakan periksa kembali API Key Mailketing Anda di Pengaturan Perusahaan.';
+      }
+      return {
+        success: false,
+        message: msg,
+        data: responseData,
+      };
+    }
+
+    return {
+      success: true,
+      message: `Email terkirim ke ${recipient} via Mailketing API.`,
+      data: responseData,
+    };
+  } catch (err: any) {
+    console.warn('Direct Mailketing fetch error:', err);
+    return {
+      success: false,
+      message: `Gagal terhubung ke Mailketing API: ${err.message || 'Network error'}`,
+    };
+  }
+}
 
 /**
  * Sends a generic email using Mailketing API
@@ -38,7 +137,7 @@ export async function sendEmail(options: MailOptions): Promise<MailServiceResult
     subject,
     content,
     senderName = 'PT. LINTAS DATA INTERNASIONAL',
-    senderEmail = 'admin@ldi.co.id',
+    senderEmail = 'alwanemail@gmail.com',
     attachmentUrl,
     mailketingApiKey,
   } = options;
@@ -62,39 +161,38 @@ export async function sendEmail(options: MailOptions): Promise<MailServiceResult
     });
 
     const responseText = await response.text();
+
+    // If backend proxy endpoint returns HTML or non-JSON (e.g. static host SPA fallback index.html), fall back to direct fetch
+    if (!response.ok || responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+      console.warn('Backend proxy /api/mail/send returned HTML/Non-API response. Executing direct Mailketing fallback.');
+      return sendDirectMailketing(options);
+    }
+
     let responseData: any = {};
     try {
       responseData = JSON.parse(responseText);
     } catch {
-      // Ignore text parse errors
+      console.warn('Failed to parse backend JSON response. Executing direct Mailketing fallback.');
+      return sendDirectMailketing(options);
     }
 
-    if (response.ok && responseData.success) {
+    if (responseData.success) {
       return {
         success: true,
-        message: responseData.message || 'Email successfully sent via Mailketing API.',
+        message: responseData.message || 'Email berhasil terkirim via Mailketing API.',
         data: responseData,
       };
     } else {
-      const errMsg =
-        responseData.message ||
-        responseData.error ||
-        (responseText.includes('<html')
-          ? 'Gagal terhubung ke server backend pengirim email. Silakan coba beberapa saat lagi.'
-          : responseText || 'Gagal mengirim email via Mailketing API.');
-
+      // If backend returned explicit failure JSON (e.g. Invalid token), return failure
       return {
         success: false,
-        message: errMsg,
+        message: responseData.message || responseData.error || 'Gagal mengirim email via Mailketing API.',
         data: responseData,
       };
     }
   } catch (err: any) {
-    console.error('Mailketing proxy dispatch error:', err);
-    return {
-      success: false,
-      message: `Gagal menghubungkan ke server pengiriman email: ${err.message || 'Network error'}`,
-    };
+    console.warn('Backend proxy fetch failed. Executing direct Mailketing fallback.', err);
+    return sendDirectMailketing(options);
   }
 }
 

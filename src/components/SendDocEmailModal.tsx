@@ -60,6 +60,7 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
   // Helper function to replace template placeholders
   const replacePlaceholders = (templateStr: string) => {
     return templateStr
+      .replace(/jagoanserver\.com/gi, 'e-office.ldi.co.id')
       .replace(/\{DOC_NUMBER\}/g, docNumber)
       .replace(/\{CUSTOMER_NAME\}/g, customerName)
       .replace(/\{DOC_DATE\}/g, docDate)
@@ -89,7 +90,8 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
     ? replacePlaceholders(rawSubject)
     : `[PT. LDI] Dokumen Resmi ${type} - ${docNumber} (${customerName})`;
 
-  const domainName = companyProfile?.website ? companyProfile.website.replace(/^https?:\/\//, '') : 'e-office.ldi.co.id';
+  const rawDomain = companyProfile?.website ? companyProfile.website.replace(/^https?:\/\//, '') : 'e-office.ldi.co.id';
+  const domainName = rawDomain.toLowerCase().includes('jagoanserver') ? 'e-office.ldi.co.id' : rawDomain;
 
   const defaultBody = rawBody
     ? replacePlaceholders(rawBody)

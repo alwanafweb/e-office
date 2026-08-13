@@ -476,7 +476,7 @@ export default function App() {
         {
           article: 1,
           title: 'RUANG LINGKUP PEKERJAAN & INFRASTRUKTUR',
-          content: `PIHAK PERTAMA (${companyProfile.legalName}) sepakat menyediakan layanan ${sph.items.map((i) => i.name).join(', ')} kepada PIHAK KEDUA (${sph.customerName}) sesuai standar kualitas Jagoanserver.com.`,
+          content: `PIHAK PERTAMA (${companyProfile.legalName}) sepakat menyediakan layanan ${sph.items.map((i) => i.name).join(', ')} kepada PIHAK KEDUA (${sph.customerName}) sesuai standar kualitas e-office.ldi.co.id.`,
         },
         {
           article: 2,
@@ -1084,7 +1084,7 @@ export default function App() {
       <footer className="bg-slate-900 text-slate-400 text-xs py-6 border-t border-slate-800 print:hidden mt-12">
         <div className="max-w-7xl mx-auto px-4 text-center space-y-2">
           <p className="font-bold text-slate-300">
-            PT. LINTAS DATA INTERNASIONAL — Jagoanserver.com
+            PT. LINTAS DATA INTERNASIONAL — e-office.ldi.co.id
           </p>
           <p className="text-slate-500 text-[11px]">
             My Republic Plaza, Jl. BSD Green Office Park Wing A Lantai Dasar Zona 6, Sampora, Cisauk, Tangerang, Banten 15345 | Support: support@ldi.co.id

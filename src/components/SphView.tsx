@@ -89,7 +89,7 @@ export const SphView: React.FC<SphViewProps> = ({
     { title: 'Bandwidth Ratio', value: '1:1 Symmetrical Dedicated' },
     { title: 'Service Level Agreement (SLA)', value: '99.9% Uptime Guarantee' },
     { title: 'Public IP Allocation', value: '/29 IPv4 Public Address' },
-    { title: '24/7 Technical Support', value: 'NOC Dedicated Jagoanserver' },
+    { title: '24/7 Technical Support', value: 'NOC Dedicated PT. LDI' },
   ];
 
   const defaultTerms: string[] = [

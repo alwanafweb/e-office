@@ -111,7 +111,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                 )}
               </div>
               <p className="text-[9px] sm:text-[10px] text-blue-300 tracking-wider uppercase font-medium mt-0.5 truncate max-w-[130px] xs:max-w-[190px] sm:max-w-none">
-                Enterprise Business Suite • {profile.website || 'Jagoanserver.com'}
+                Enterprise Business Suite • {profile.website || 'e-office.ldi.co.id'}
               </p>
             </div>
           </div>

@@ -4,7 +4,7 @@ export const COMPANY_PROFILE: CompanyProfile = {
   name: 'PT. LINTAS DATA INTERNASIONAL',
   legalName: 'PT. LINTAS DATA INTERNASIONAL',
   address: 'My Republic Plaza, Jl. BSD Green Office Park Jl. BSD Grand Boulevard No.6 Wing A Lantai Dasar Zona 6, Sampora, Kec. Cisauk, Kabupaten Tangerang, Banten 15345',
-  website: 'Jagoanserver.com',
+  website: 'e-office.ldi.co.id',
   email: 'support@ldi.co.id',
   phone: '087777040496',
   whatsapp: '087777040496',

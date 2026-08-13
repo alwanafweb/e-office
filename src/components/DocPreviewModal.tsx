@@ -479,7 +479,7 @@ const SphDocumentView: React.FC<{ sph: SPH; showStamp: boolean; companyProfile?:
         <p className="mb-2">Dengan hormat,</p>
         <p className="text-slate-700">
           Sehubungan dengan kebutuhan infrastruktur teknologi informasi perusahaan Anda, kami PT.
-          LINTAS DATA INTERNASIONAL (Jagoanserver.com) dengan bangga menyampaikan rincian penawaran
+          LINTAS DATA INTERNASIONAL (e-office.ldi.co.id) dengan bangga menyampaikan rincian penawaran
           layanan terbaik sebagai berikut:
         </p>
       </div>

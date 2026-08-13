@@ -38,11 +38,44 @@ export const EmailPreviewModal: React.FC<EmailPreviewModalProps> = ({
   const [deviceMode, setDeviceMode] = useState<'desktop' | 'mobile'>('desktop');
 
   const fileName = `${type}_${docNumber.replace(/\//g, '_')}.pdf`;
-  const domainName = companyProfile?.website ? companyProfile.website.replace(/^https?:\/\//, '') : 'e-office.ldi.co.id';
+  const rawDomain = companyProfile?.website ? companyProfile.website.replace(/^https?:\/\//, '') : 'e-office.ldi.co.id';
+  const domainName = rawDomain.toLowerCase().includes('jagoanserver') ? 'e-office.ldi.co.id' : rawDomain;
   const verifyUrl = `https://${domainName}/verify?doc=${encodeURIComponent(docNumber)}`;
 
   const companyName = companyProfile?.name || 'PT. LINTAS DATA INTERNASIONAL';
   const companyEmail = companyProfile?.email || 'admin@ldi.co.id';
+
+  // Helper to format plain text message body with clickable URLs and converted domain
+  const formatMessageBodyToHtml = (body: string) => {
+    if (!body) return '<i class="text-slate-400">Isi pesan kosong...</i>';
+
+    // Replace any remaining jagoanserver.com references
+    let cleanBody = body.replace(/jagoanserver\.com/gi, 'e-office.ldi.co.id');
+
+    // Escape basic HTML special chars
+    const escaped = cleanBody
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // Regex to match http/https URLs
+    const urlRegex = /(https?:\/\/[^\s<]+)/g;
+
+    const lines = escaped.split('\n');
+    const formattedLines = lines.map((line) => {
+      return line.replace(urlRegex, (url) => {
+        let cleanUrl = url;
+        let trailingPunct = '';
+        if (/[.,;!?]$/.test(cleanUrl)) {
+          trailingPunct = cleanUrl.slice(-1);
+          cleanUrl = cleanUrl.slice(0, -1);
+        }
+        return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-600 font-bold underline hover:text-blue-800 break-all inline-flex items-center gap-0.5">${cleanUrl}</a>${trailingPunct}`;
+      });
+    });
+
+    return formattedLines.join('<br/>');
+  };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in print:hidden">
@@ -155,11 +188,9 @@ export const EmailPreviewModal: React.FC<EmailPreviewModalProps> = ({
             <div className="p-6 space-y-5">
               {/* Message Content */}
               <div
-                className="text-xs sm:text-sm text-slate-800 leading-relaxed font-sans whitespace-pre-wrap"
+                className="text-xs sm:text-sm text-slate-800 leading-relaxed font-sans"
                 dangerouslySetInnerHTML={{
-                  __html: messageBody
-                    ? messageBody.replace(/\n/g, '<br/>')
-                    : '<i class="text-slate-400">Isi pesan kosong...</i>',
+                  __html: formatMessageBodyToHtml(messageBody),
                 }}
               />
 

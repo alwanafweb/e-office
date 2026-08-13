@@ -46,13 +46,13 @@ Bersama email ini, kami dari PT. LINTAS DATA INTERNASIONAL sampaikan Dokumen Res
 Berkas PDF resmi bertanda tangan digital dan stempel sah PT. LDI telah terlampir secara otomatis pada email ini.
 
 Anda dapat melakukan verifikasi keaslian dokumen secara langsung melalui Portal Keaslian PT. LDI:
-https://jagoanserver.com/verify?doc={DOC_NUMBER}
+https://e-office.ldi.co.id/verify?doc={DOC_NUMBER}
 
 Demikian disampaikan. Jika ada pertanyaan lebih lanjut, silakan menghubungi kami.
 
 Hormat Kami,
 PT. LINTAS DATA INTERNASIONAL
-Telp/WA: {PHONE} | Website: https://jagoanserver.com`,
+Telp/WA: {PHONE} | Website: https://e-office.ldi.co.id`,
     pksSubject: '[PT. LDI] Perjanjian Kerja Sama (PKS) {DOC_NUMBER} - {CUSTOMER_NAME}',
     pksBody: `Kepada Yth. Bapak/Ibu Tim Manajemen {CUSTOMER_NAME},
 
@@ -66,7 +66,7 @@ Berkas PDF PKS lengkap beserta Lampiran Syarat & Ketentuan Layanan (SLA) telah t
 
 Hormat Kami,
 PT. LINTAS DATA INTERNASIONAL
-Telp/WA: {PHONE} | Website: https://jagoanserver.com`,
+Telp/WA: {PHONE} | Website: https://e-office.ldi.co.id`,
     invoiceSubject: '[PT. LDI] Tagihan Penagihan (Invoice) {DOC_NUMBER} - {CUSTOMER_NAME}',
     invoiceBody: `Kepada Yth. Bapak/Ibu Tim Keuangan {CUSTOMER_NAME},
 
@@ -82,7 +82,7 @@ Terima kasih atas kerja sama dan kepercayaan Anda.
 
 Hormat Kami,
 Departemen Keuangan PT. LINTAS DATA INTERNASIONAL
-Telp/WA: {PHONE} | Website: https://jagoanserver.com`,
+Telp/WA: {PHONE} | Website: https://e-office.ldi.co.id`,
   },
 };
 

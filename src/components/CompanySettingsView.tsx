@@ -586,7 +586,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                   <div className="bg-slate-900 p-2 border-t border-slate-800/80">
                     <div className="bg-slate-950 px-2.5 py-1 rounded border border-slate-800 text-[10px] text-slate-400 font-mono flex items-center gap-1.5 truncate">
                       <span className="text-emerald-400">🔒</span>
-                      <span className="truncate">https://{profile.website || 'jagoanserver.com'}</span>
+                      <span className="truncate">https://{profile.website || 'e-office.ldi.co.id'}</span>
                     </div>
                   </div>
                 </div>

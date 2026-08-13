@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { X, Send, Mail, CheckCircle2, AlertCircle, FileText, Lock, Paperclip, RefreshCw, Copy, Check } from 'lucide-react';
+import { X, Send, Mail, CheckCircle2, AlertCircle, FileText, Lock, Paperclip, RefreshCw, Copy, Check, Eye } from 'lucide-react';
 import { CompanyProfile, Invoice, PKS, SPH } from '../types';
 import { formatIDR, formatDateIndonesian } from '../utils/formatters';
 import { exportToPdf, generatePdfBase64 } from '../utils/pdfGenerator';
 import { sendEmail } from '../api/mailService';
 import { apiUploadPdf } from '../api/client';
+import { EmailPreviewModal } from './EmailPreviewModal';
 
 interface SendDocEmailModalProps {
   isOpen: boolean;
@@ -88,6 +89,8 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
     ? replacePlaceholders(rawSubject)
     : `[PT. LDI] Dokumen Resmi ${type} - ${docNumber} (${customerName})`;
 
+  const domainName = companyProfile?.website ? companyProfile.website.replace(/^https?:\/\//, '') : 'e-office.ldi.co.id';
+
   const defaultBody = rawBody
     ? replacePlaceholders(rawBody)
     : `Kepada Yth. Bapak/Ibu Tim Manajemen ${customerName},\n\n` +
@@ -98,11 +101,11 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
       `• Total Nilai: ${formatIDR(totalAmount)}\n\n` +
       `Berkas PDF resmi bertanda tangan digital dan stempel sah PT. LDI telah terlampir secara otomatis pada email ini.\n\n` +
       `Anda juga dapat melakukan verifikasi otentisitas dokumen ini secara langsung melalui Portal Keaslian PT. LDI:\n` +
-      `https://jagoanserver.com/verify?doc=${encodeURIComponent(docNumber)}\n\n` +
+      `https://${domainName}/verify?doc=${encodeURIComponent(docNumber)}\n\n` +
       `Demikian disampaikan. Jika ada pertanyaan lebih lanjut, silakan menghubungi kami.\n\n` +
       `Hormat Kami,\n` +
       `PT. LINTAS DATA INTERNASIONAL\n` +
-      `Telp/WA: ${companyProfile?.whatsapp || '0812-9988-7766'} | Website: https://jagoanserver.com`;
+      `Telp/WA: ${companyProfile?.whatsapp || '0812-9988-7766'} | Website: https://${domainName}`;
 
   // Form States
   const [recipientEmail, setRecipientEmail] = useState(initialEmail || '');
@@ -122,14 +125,16 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
   } | null>(null);
   const [copied, setCopied] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
 
-  const handleSendEmailSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSendEmailSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!recipientEmail || !recipientEmail.includes('@')) {
       setErrorMsg('Harap masukkan alamat email penerima yang valid.');
       return;
     }
 
+    setShowPreviewModal(false);
     setErrorMsg('');
     setIsSending(true);
 
@@ -182,8 +187,8 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
             <div style="background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 14px; margin-top: 16px; font-size: 12px; color: #475569;">
               <p style="margin: 0 0 4px 0; font-weight: bold; color: #0f172a;">🛡️ Verifikasi Keaslian Dokumen:</p>
               <p style="margin: 0;">Anda juga dapat memverifikasi otentisitas dokumen ini secara langsung via Portal Keaslian PT. LDI:<br/>
-              <a href="https://jagoanserver.com/verify?doc=${encodeURIComponent(docNumber)}" style="color: #0284c7; font-weight: bold; text-decoration: underline;">
-                https://jagoanserver.com/verify?doc=${encodeURIComponent(docNumber)}
+              <a href="https://${domainName}/verify?doc=${encodeURIComponent(docNumber)}" style="color: #0284c7; font-weight: bold; text-decoration: underline;">
+                https://${domainName}/verify?doc=${encodeURIComponent(docNumber)}
               </a></p>
             </div>
           </div>
@@ -383,7 +388,17 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
 
               {/* Message Body */}
               <div>
-                <label className="font-bold text-slate-800 block mb-1">Pesan / Isi Email</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-slate-800 block">Pesan / Isi Email</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowPreviewModal(true)}
+                    className="text-blue-700 hover:text-blue-900 text-xs font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Pratinjau Tampilan Email</span>
+                  </button>
+                </div>
                 <textarea
                   rows={6}
                   required
@@ -414,39 +429,69 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
                 </span>
               </div>
 
-              {/* Submit Button */}
-              <div className="pt-2 flex items-center justify-end gap-3 border-t border-slate-100">
+              {/* Submit & Action Buttons */}
+              <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={() => setShowPreviewModal(true)}
                   disabled={isSending}
-                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 transition text-xs"
+                  className="px-3.5 py-2.5 rounded-xl border border-blue-200 text-blue-800 bg-blue-50/80 font-bold hover:bg-blue-100 transition text-xs flex items-center gap-1.5 cursor-pointer"
+                  title="Lihat tampilan email lengkap beserta link dokumen & verifikasi sebelum dikirim"
                 >
-                  Batal
+                  <Eye className="w-4 h-4 text-blue-600" />
+                  <span>Pratinjau Email</span>
                 </button>
 
-                <button
-                  type="submit"
-                  disabled={isSending || !recipientEmail}
-                  className="bg-blue-900 hover:bg-blue-800 disabled:bg-slate-300 text-white font-bold px-6 py-2.5 rounded-xl shadow-md flex items-center gap-2 transition text-xs"
-                >
-                  {isSending ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin text-cyan-300" />
-                      <span>{sendStep}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4 text-cyan-300" />
-                      <span>Kirim Email Dokumen Now</span>
-                    </>
-                  )}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    disabled={isSending}
+                    className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 transition text-xs"
+                  >
+                    Batal
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={isSending || !recipientEmail}
+                    className="bg-blue-900 hover:bg-blue-800 disabled:bg-slate-300 text-white font-bold px-6 py-2.5 rounded-xl shadow-md flex items-center gap-2 transition text-xs cursor-pointer"
+                  >
+                    {isSending ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-cyan-300" />
+                        <span>{sendStep}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 text-cyan-300" />
+                        <span>Kirim Email Dokumen Now</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           )}
         </div>
       </div>
+
+      {/* Email Preview Modal Overlay */}
+      <EmailPreviewModal
+        isOpen={showPreviewModal}
+        onClose={() => setShowPreviewModal(false)}
+        onSendNow={() => handleSendEmailSubmit()}
+        isSending={isSending}
+        sendStep={sendStep}
+        type={type}
+        docNumber={docNumber}
+        customerName={customerName}
+        recipientEmail={recipientEmail}
+        ccEmail={ccEmail}
+        subject={subject}
+        messageBody={messageBody}
+        companyProfile={companyProfile}
+      />
     </div>
   );
 };

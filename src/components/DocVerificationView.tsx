@@ -17,7 +17,8 @@ import {
   Building
 } from 'lucide-react';
 import { CompanyProfile, Invoice, PKS, SPH } from '../types';
-import { formatIDR } from '../utils/formatters';
+import { formatIDR, formatDateIndonesian } from '../utils/formatters';
+import { QRCodeBadge } from './QRCodeBadge';
 
 interface DocVerificationViewProps {
   sphList: SPH[];
@@ -458,6 +459,23 @@ export const DocVerificationView: React.FC<DocVerificationViewProps> = ({
                       </p>
                     </div>
                   </div>
+                </div>
+
+                {/* QR Code Verification Badge */}
+                <div className="pt-2">
+                  <QRCodeBadge
+                    docNumber={result.matchedQuery || ''}
+                    docType={result.type || 'DOKUMEN'}
+                    issueDate={
+                      'date' in result.data
+                        ? formatDateIndonesian((result.data as SPH).date)
+                        : 'startDate' in result.data
+                        ? formatDateIndonesian((result.data as PKS).startDate)
+                        : 'issueDate' in result.data
+                        ? formatDateIndonesian((result.data as Invoice).issueDate)
+                        : formatDateIndonesian(new Date().toISOString())
+                    }
+                  />
                 </div>
 
                 {/* Digital Signature & Fingerprint Hash */}

@@ -195,10 +195,11 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
             <button
               onClick={handleDownloadPdf}
               disabled={isDownloading}
-              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow transition disabled:opacity-50"
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-2 rounded-lg shadow transition disabled:opacity-50 cursor-pointer"
+              title="Unduh Pratinjau Dokumen Ini sebagai File PDF (jsPDF + html2canvas)"
             >
-              <Download className="w-4 h-4" />
-              {isDownloading ? 'Mengunduh...' : 'Download PDF'}
+              <Download className="w-4 h-4 text-blue-100" />
+              <span>{isDownloading ? 'Mengunduh PDF...' : 'Unduh PDF'}</span>
             </button>
 
             {type === 'SPH' && onConvertToInvoice && (

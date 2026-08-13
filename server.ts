@@ -158,6 +158,131 @@ async function startServer() {
     res.json({ success: true, id: req.params.id });
   });
 
+  // Mailketing API Configuration
+  const MAILKETING_API_KEY = process.env.MAILKETING_TOKEN || '5aafffa0c30e5a87235b66f6e1c0e440';
+  const otpStore = new Map<string, { code: string; expiresAt: number; type: string; payload?: any }>();
+
+  // Mailketing Email Dispatcher Helper
+  async function sendMailketingEmailServer(recipient: string, subject: string, content: string) {
+    try {
+      const params = new URLSearchParams();
+      params.append('api_key', MAILKETING_API_KEY);
+      params.append('recipient', recipient);
+      params.append('subject', subject);
+      params.append('content', content);
+      params.append('sender_name', 'PT. LINTAS DATA INTERNASIONAL');
+      params.append('sender_email', 'support@ldi.co.id');
+
+      const response = await fetch('https://api.mailketing.co.id/api/v1/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString(),
+      });
+
+      const text = await response.text();
+      console.log(`[MAILKETING API DISPATCH] Recipient: ${recipient} | Response: ${text.slice(0, 100)}`);
+      return { success: true, response: text };
+    } catch (err: any) {
+      console.error(`[MAILKETING ERROR]: ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  }
+
+  function buildOtpEmailHtmlServer(otpCode: string, typeName: string, recipientEmail: string) {
+    return `
+      <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #0f172a;">
+        <div style="text-align: center; padding-bottom: 16px; border-bottom: 1px solid #f1f5f9;">
+          <h2 style="color: #0369a1; margin: 0; font-size: 20px;">PT. LINTAS DATA INTERNASIONAL</h2>
+          <p style="color: #64748b; font-size: 12px; margin-top: 4px;">Sistem Keamanan Autentikasi e-Office LDI</p>
+        </div>
+        <div style="padding: 24px 0; text-align: center;">
+          <p style="color: #334155; font-size: 14px; margin-bottom: 12px;">Berikut adalah Kode Verifikasi (OTP) untuk <strong>${typeName}</strong> akun Anda (${recipientEmail}):</p>
+          <div style="background-color: #f0f9ff; border: 2px dashed #0284c7; padding: 16px; border-radius: 12px; display: inline-block; margin: 12px 0;">
+            <span style="font-family: monospace; font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #0369a1;">${otpCode}</span>
+          </div>
+          <p style="color: #64748b; font-size: 12px; margin-top: 16px;">Kode ini berlaku selama <strong>5 menit</strong>. Jangan berikan kode ini kepada siapapun demi keamanan akun Anda.</p>
+        </div>
+        <div style="text-align: center; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
+          &copy; ${new Date().getFullYear()} PT. Laksanakan Dengan Ikhlas (LDI). All rights reserved.
+        </div>
+      </div>
+    `;
+  }
+
+  // Auth OTP Endpoints
+  app.post('/api/auth/send-otp', async (req, res) => {
+    const { email, type, username } = req.body || {};
+
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ success: false, message: 'Email terdaftar wajib diisi dengan format valid.' });
+    }
+
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 5 * 60 * 1000;
+
+    const key = `${type}:${email.toLowerCase().trim()}`;
+    otpStore.set(key, { code: otpCode, expiresAt, type, payload: { email, username } });
+
+    const typeTitle = type === 'register' ? 'Pendaftaran Akun Baru' : type === 'forgot' ? 'Reset Password' : 'Verifikasi Login';
+    const html = buildOtpEmailHtmlServer(otpCode, typeTitle, email);
+
+    // Send via Mailketing API
+    await sendMailketingEmailServer(email, `[e-Office LDI] Kode Verifikasi OTP: ${otpCode}`, html);
+
+    return res.json({
+      success: true,
+      message: `Kode verifikasi OTP 6-digit telah dikirim via Mailketing ke ${email}. (Berlaku 5 menit)`,
+      devOtpCode: otpCode
+    });
+  });
+
+  app.post('/api/auth/verify-otp', async (req, res) => {
+    const { email, otpCode, type } = req.body || {};
+
+    if (!email || !otpCode) {
+      return res.status(400).json({ success: false, message: 'Email dan Kode OTP wajib diisi.' });
+    }
+
+    const key = `${type}:${email.toLowerCase().trim()}`;
+    const stored = otpStore.get(key);
+
+    if (!stored) {
+      return res.status(400).json({ success: false, message: 'Kode OTP tidak ditemukan atau belum dikirim. Silakan klik \'Kirim Ulang Kode\'.' });
+    }
+
+    if (Date.now() > stored.expiresAt) {
+      otpStore.delete(key);
+      return res.status(400).json({ success: false, message: 'Kode OTP telah kadaluarsa (lebih dari 5 menit). Silakan minta kode baru.' });
+    }
+
+    if (stored.code !== otpCode.trim()) {
+      return res.status(400).json({ success: false, message: 'Kode OTP yang Anda masukkan salah. Periksa kembali email Anda.' });
+    }
+
+    otpStore.delete(key);
+
+    return res.json({
+      success: true,
+      message: 'Verifikasi Kode OTP Berhasil!'
+    });
+  });
+
+  // General Mailketing Proxy Route
+  app.post('/api/mail/send', async (req, res) => {
+    const { recipient, subject, htmlContent } = req.body || {};
+    if (!recipient || !subject) {
+      return res.status(400).json({ success: false, message: 'Penerima dan Subjek wajib diisi.' });
+    }
+
+    const result = await sendMailketingEmailServer(recipient, subject, htmlContent || '<p>Notifikasi e-Office LDI</p>');
+    return res.json({
+      success: result.success,
+      message: result.success ? `Email terkirim ke ${recipient} via Mailketing API.` : `Gagal mengirim email: ${result.error}`
+    });
+  });
+
   // Batch Sync Endpoint
   app.post('/api/sync', (req, res) => {
     const { customers, sphs, pkss, invoices } = req.body || {};

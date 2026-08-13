@@ -27,7 +27,7 @@ export interface MailketingResponse {
  * Mengirim Email Menggunakan API Mailketing (POST Request)
  */
 export async function sendMailketingEmail(options: SendEmailOptions): Promise<MailketingResponse> {
-  const { recipient, subject, content, senderName = 'PT. LINTAS DATA INTERNASIONAL', senderEmail = 'admin@ldi.co.id' } = options;
+  const { recipient, subject, content, senderName = 'PT. LINTAS DATA INTERNASIONAL', senderEmail = 'support@ldi.co.id' } = options;
 
   const params = new URLSearchParams();
   params.append('api_key', MAILKETING_API_KEY);

@@ -74,9 +74,27 @@ export const KopSuratHeader: React.FC<KopSuratHeaderProps> = ({ compact = false,
       </div>
 
       {/* Official Indonesian Kop Surat Double Separator Line */}
-      <div className="w-full mt-0.5">
-        <div className="h-[3px] bg-blue-950 w-full rounded-full"></div>
-        <div className="h-[1px] bg-cyan-500 w-full mt-[2px]"></div>
+      <div className="w-full mt-2 mb-3 space-y-[2px] block">
+        <div
+          className="w-full block"
+          style={{
+            height: '3px',
+            minHeight: '3px',
+            backgroundColor: '#0f172a',
+            borderBottom: '3px solid #0f172a',
+            borderRadius: '1px',
+          }}
+        />
+        <div
+          className="w-full block"
+          style={{
+            height: '1.5px',
+            minHeight: '1.5px',
+            backgroundColor: '#06b6d4',
+            borderBottom: '1.5px solid #06b6d4',
+            marginTop: '2px',
+          }}
+        />
       </div>
     </div>
   );

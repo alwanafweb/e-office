@@ -121,22 +121,32 @@ export const D1ConfigPanel: React.FC<D1ConfigPanelProps> = ({ onStatusChange }) 
         </div>
       </div>
 
-      {/* Mode Status Indicator */}
-      <div className="mb-6 p-4 rounded-xl bg-slate-50 border border-slate-200 flex justify-between items-center">
-        <div>
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Status Mode Storage</p>
-          <div className="flex items-center space-x-2 mt-1">
-            {config.mode === 'd1' && config.databaseId ? (
-              <span className="text-xs font-bold text-emerald-600 flex items-center bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
-                D1 Cloudflare Connected
-              </span>
-            ) : (
-              <span className="text-xs font-bold text-amber-600 flex items-center bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
-                <AlertCircle className="w-3.5 h-3.5 mr-1.5" />
-                Local Storage Mode
-              </span>
-            )}
+      {/* Mode Status Indicator & Background Auto-Sync Banner */}
+      <div className="mb-6 p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+        <div className="flex justify-between items-center">
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Status Mode Storage</p>
+            <div className="flex items-center space-x-2 mt-1">
+              {config.mode === 'd1' && config.databaseId ? (
+                <span className="text-xs font-bold text-emerald-600 flex items-center bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                  <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                  D1 Cloudflare Connected
+                </span>
+              ) : (
+                <span className="text-xs font-bold text-amber-600 flex items-center bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
+                  <AlertCircle className="w-3.5 h-3.5 mr-1.5" />
+                  Local Storage Mode
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="text-right">
+            <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200 inline-flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping"></span>
+              Auto-Sync 60s Active
+            </span>
+            <p className="text-[10px] text-slate-500 mt-1">Sinkronisasi & auto-merge perbedaan data otomatis setiap 60 detik</p>
           </div>
         </div>
       </div>

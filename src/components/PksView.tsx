@@ -27,6 +27,8 @@ interface PksViewProps {
   onAddPks: (pks: PKS) => void;
   onUpdatePks: (pks: PKS) => void;
   onDeletePks: (id: string) => void;
+  onBatchDeletePks?: (ids: string[]) => void;
+  onBatchUpdatePksStatus?: (ids: string[], status: PKS['status']) => void;
   onPreviewPks: (pks: PKS) => void;
   onToggleLockDocument?: (type: 'SPH' | 'PKS' | 'Invoice', id: string, forceState?: boolean) => void;
 }
@@ -38,12 +40,18 @@ export const PksView: React.FC<PksViewProps> = ({
   onAddPks,
   onUpdatePks,
   onDeletePks,
+  onBatchDeletePks,
+  onBatchUpdatePksStatus,
   onPreviewPks,
   onToggleLockDocument,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('Semua');
   const [signingPks, setSigningPks] = useState<PKS | null>(null);
+
+  // Bulk Selection States
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [batchTargetStatus, setBatchTargetStatus] = useState<PKS['status']>('Aktif');
 
   // Custom PKS Modal States
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
@@ -75,6 +83,38 @@ export const PksView: React.FC<PksViewProps> = ({
     const matchesStatus = statusFilter === 'Semua' || pks.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  const isAllSelected = filteredPksList.length > 0 && filteredPksList.every((p) => selectedIds.includes(p.id));
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredPksList.map((p) => p.id));
+    }
+  };
+
+  const handleToggleSelectOne = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleApplyBatchStatus = () => {
+    if (selectedIds.length === 0) return;
+    if (onBatchUpdatePksStatus) {
+      onBatchUpdatePksStatus(selectedIds, batchTargetStatus);
+      setSelectedIds([]);
+    }
+  };
+
+  const handleApplyBatchDelete = () => {
+    if (selectedIds.length === 0) return;
+    if (onBatchDeletePks) {
+      onBatchDeletePks(selectedIds);
+      setSelectedIds([]);
+    }
+  };
 
   const handleSaveSignaturePks = (pks: PKS, party: 1 | 2, signatureDataUrl: string) => {
     const updated: PKS = {
@@ -146,12 +186,69 @@ export const PksView: React.FC<PksViewProps> = ({
         </div>
       </div>
 
+      {/* Bulk Selection Action Bar */}
+      {selectedIds.length > 0 && (
+        <div className="bg-slate-900 text-white p-3.5 px-5 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-md animate-fadeIn border border-slate-800">
+          <div className="flex items-center gap-3">
+            <span className="bg-cyan-500 text-slate-950 px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider">
+              {selectedIds.length} PKS Dipilih
+            </span>
+            <p className="text-xs text-slate-300 hidden sm:block">Pilih tindakan masal untuk dokumen PKS terpilih</p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+              <select
+                value={batchTargetStatus}
+                onChange={(e) => setBatchTargetStatus(e.target.value as PKS['status'])}
+                className="bg-transparent text-xs text-white font-bold focus:outline-none px-2 py-1"
+              >
+                <option value="Aktif" className="text-slate-900">Status: Aktif</option>
+                <option value="Menunggu TTD" className="text-slate-900">Status: Menunggu TTD</option>
+                <option value="Draft" className="text-slate-900">Status: Draft</option>
+                <option value="Selesai" className="text-slate-900">Status: Selesai</option>
+                <option value="Dibatalkan" className="text-slate-900">Status: Dibatalkan</option>
+              </select>
+              <button
+                onClick={handleApplyBatchStatus}
+                className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs px-3 py-1.5 rounded-lg transition cursor-pointer"
+              >
+                Ubah Status
+              </button>
+            </div>
+
+            <button
+              onClick={handleApplyBatchDelete}
+              className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Hapus ({selectedIds.length})
+            </button>
+
+            <button
+              onClick={() => setSelectedIds([])}
+              className="text-xs text-slate-300 hover:text-white px-2 py-1 transition cursor-pointer"
+            >
+              Batal Pilih
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* PKS List Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto touch-scroll no-scrollbar">
-          <table className="w-full text-left text-xs border-collapse min-w-[720px]">
+          <table className="w-full text-left text-xs border-collapse min-w-[760px]">
             <thead>
               <tr className="bg-slate-900 text-white font-bold uppercase tracking-wider">
+                <th className="p-3.5 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={isAllSelected}
+                    onChange={handleToggleSelectAll}
+                    className="w-4 h-4 rounded border-slate-600 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                  />
+                </th>
                 <th className="p-3.5">Nomor PKS</th>
                 <th className="p-3.5">Ref SPH</th>
                 <th className="p-3.5">Pelanggan (Pihak Ke-2)</th>
@@ -163,9 +260,24 @@ export const PksView: React.FC<PksViewProps> = ({
             </thead>
             <tbody>
               {filteredPksList.length > 0 ? (
-                filteredPksList.map((pks) => (
-                  <tr key={pks.id} className="border-b border-slate-100 hover:bg-slate-50/80">
-                    <td className="p-3.5 font-mono font-bold text-cyan-900">{pks.pksNumber}</td>
+                filteredPksList.map((pks) => {
+                  const isSelected = selectedIds.includes(pks.id);
+                  return (
+                    <tr
+                      key={pks.id}
+                      className={`border-b border-slate-100 transition ${
+                        isSelected ? 'bg-cyan-50/70' : 'hover:bg-slate-50/80'
+                      }`}
+                    >
+                      <td className="p-3.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelectOne(pks.id)}
+                          className="w-4 h-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                        />
+                      </td>
+                      <td className="p-3.5 font-mono font-bold text-cyan-900">{pks.pksNumber}</td>
                     <td className="p-3.5 font-mono text-slate-500">{pks.sphReferenceNumber || '-'}</td>
                     <td className="p-3.5">
                       <p className="font-bold text-slate-800">{pks.customerName}</p>
@@ -261,10 +373,11 @@ export const PksView: React.FC<PksViewProps> = ({
                       </div>
                     </td>
                   </tr>
-                ))
+                );
+              })
               ) : (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-400 italic">
+                  <td colSpan={8} className="p-8 text-center text-slate-400 italic">
                     Belum ada Perjanjian Kerja Sama (PKS). SPH yang disetujui dapat dikonversi ke PKS.
                   </td>
                 </tr>

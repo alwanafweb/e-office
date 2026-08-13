@@ -174,6 +174,70 @@ export const CustomPksModal: React.FC<CustomPksModalProps> = ({
 
   // Check if draft exists on mount / modal open
   useEffect(() => {
+    if (!isOpen) return;
+
+    if (initialPks) {
+      setSelectedCustomerId(initialPks.customerId || '');
+      setCustomerName(initialPks.customerName || '');
+      setCustomerRepresentative(initialPks.customerRepresentative || '');
+      setCustomerRepPosition(initialPks.customerRepPosition || 'Direktur / Manajemen');
+      setCustomerAddress(initialPks.customerAddress || '');
+      setPksNumber(initialPks.pksNumber);
+      setSphReferenceNumber(initialPks.sphReferenceNumber || '');
+      setStartDate(initialPks.startDate || todayStr);
+      setEndDate(initialPks.endDate || nextYearStr);
+      setContractDurationMonths(initialPks.contractDurationMonths || 12);
+      setServiceItems(
+        initialPks.serviceItems && initialPks.serviceItems.length > 0
+          ? initialPks.serviceItems
+          : []
+      );
+      setSlaPercent(initialPks.slaPercent || 99.9);
+      setClauses(
+        initialPks.clauses && initialPks.clauses.length > 0
+          ? initialPks.clauses
+          : DEFAULT_CLAUSES
+      );
+      setParty1SignerName(initialPks.party1SignerName || COMPANY_PROFILE.directorName);
+      setParty1SignerPosition(initialPks.party1SignerPosition || COMPANY_PROFILE.directorPosition);
+      setParty2SignerName(initialPks.party2SignerName || initialPks.customerRepresentative || '');
+      setParty2SignerPosition(
+        initialPks.party2SignerPosition || initialPks.customerRepPosition || 'Direktur / Manajemen'
+      );
+    } else {
+      const firstCust = customers[0];
+      if (firstCust) {
+        setSelectedCustomerId(firstCust.id || '');
+        setCustomerName(firstCust.companyName || '');
+        setCustomerRepresentative(firstCust.picName || '');
+        setCustomerRepPosition(firstCust.picPosition || 'Direktur / Manajemen');
+        setCustomerAddress(firstCust.address || '');
+        setParty2SignerName(firstCust.picName || '');
+        setParty2SignerPosition(firstCust.picPosition || 'Direktur / Manajemen');
+      }
+      setPksNumber(generateDocNumber('PKS'));
+      setSphReferenceNumber('');
+      setStartDate(todayStr);
+      setEndDate(nextYearStr);
+      setContractDurationMonths(12);
+      setServiceItems([
+        {
+          id: '1',
+          category: 'Cloud Server',
+          name: 'Dedicated High Performance Enterprise Server',
+          description: 'RAM 128GB, NVMe 2TB RAID1, Bandwidth 1Gbps Unmetered',
+          qty: 1,
+          unit: 'Unit',
+          price: 3500000,
+          discount: 0,
+        },
+      ]);
+      setSlaPercent(99.9);
+      setClauses(DEFAULT_CLAUSES);
+      setParty1SignerName(COMPANY_PROFILE.directorName);
+      setParty1SignerPosition(COMPANY_PROFILE.directorPosition);
+    }
+
     try {
       const saved = getDecryptedItem<any>('ldi_draft_pks');
       if (saved) {
@@ -183,7 +247,7 @@ export const CustomPksModal: React.FC<CustomPksModalProps> = ({
     } catch (e) {
       // Ignore
     }
-  }, [isOpen]);
+  }, [isOpen, initialPks]);
 
   // Auto-save every 30 seconds when modal is open
   useEffect(() => {

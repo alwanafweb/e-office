@@ -48,6 +48,7 @@ import {
   setEncryptedItem,
   removeEncryptedItem,
 } from './utils/crypto';
+import { syncLocalWithCloudflareD1 } from './utils/syncManager';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('verifyDoc'); // Public default view
@@ -326,6 +327,58 @@ export default function App() {
     setEncryptedItem('ldi_invoices', invoices);
   }, [invoices]);
 
+  // Recurring Background Auto-Sync Process (Checks D1 logs & auto-merges every 60s)
+  useEffect(() => {
+    let isMounted = true;
+
+    async function runAutoSync() {
+      if (!currentUser) return;
+
+      try {
+        const syncResult = await syncLocalWithCloudflareD1({
+          customers,
+          sphs: sphList,
+          pkss: pksList,
+          invoices,
+        });
+
+        if (!isMounted) return;
+
+        if (syncResult.success) {
+          setD1Status('connected');
+
+          if (syncResult.discrepanciesResolved > 0) {
+            console.log(`[D1 AUTO-SYNC 60s] Auto-merged ${syncResult.discrepanciesResolved} discrepancies.`);
+
+            if (syncResult.mergedData.customers.length > 0) setCustomers(syncResult.mergedData.customers);
+            if (syncResult.mergedData.sphs.length > 0) setSphList(syncResult.mergedData.sphs);
+            if (syncResult.mergedData.pkss.length > 0) setPksList(syncResult.mergedData.pkss);
+            if (syncResult.mergedData.invoices.length > 0) setInvoices(syncResult.mergedData.invoices);
+
+            addActivityLog(
+              'Sistem',
+              'Pengaturan',
+              'Cloudflare D1',
+              `Auto-merge berhasil menyelesaikan ${syncResult.discrepanciesResolved} perbedaan data dengan Cloudflare D1.`
+            );
+          }
+        } else {
+          setD1Status('offline');
+        }
+      } catch (err) {
+        console.warn('Background D1 auto-sync notice:', err);
+        if (isMounted) setD1Status('offline');
+      }
+    }
+
+    const interval = setInterval(runAutoSync, 60 * 1000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [currentUser, customers, sphList, pksList, invoices]);
+
   // Customer Handlers
   const handleAddCustomer = (cust: Customer) => {
     setCustomers([cust, ...customers]);
@@ -578,6 +631,106 @@ export default function App() {
         name: targetInv.invoiceNumber,
       });
     }
+  };
+
+  // Batch Handlers for SPH, PKS, Invoice
+  const handleBatchDeleteSph = (ids: string[]) => {
+    const lockedCount = sphList.filter((s) => ids.includes(s.id) && s.isLocked).length;
+    const deleteable = sphList.filter((s) => ids.includes(s.id) && !s.isLocked);
+
+    if (deleteable.length === 0) {
+      alert('Semua dokumen SPH yang dipilih sedang TERKUNCI.');
+      return;
+    }
+
+    const msg = lockedCount > 0
+      ? `${lockedCount} dokumen SPH TERKUNCI dan tidak akan dihapus. Yakin hapus ${deleteable.length} dokumen SPH sisanya?`
+      : `Yakin ingin menghapus ${deleteable.length} dokumen SPH terpilih sekaligus?`;
+
+    if (confirm(msg)) {
+      const deleteIds = deleteable.map((d) => d.id);
+      setSphList((prev) => prev.filter((s) => !deleteIds.includes(s.id)));
+      addActivityLog('Dihapus', 'SPH', 'Masal', `Menghapus ${deleteIds.length} dokumen SPH masal`);
+      deleteIds.forEach((id) => {
+        apiDeleteSPH(id).catch((e) => console.error('D1 Batch Delete SPH Error:', e));
+      });
+    }
+  };
+
+  const handleBatchUpdateSphStatus = (ids: string[], status: SPH['status']) => {
+    const updated = sphList.map((s) => (ids.includes(s.id) ? { ...s, status } : s));
+    setSphList(updated);
+    addActivityLog('Status Diubah', 'SPH', 'Masal', `Mengubah status ${ids.length} SPH menjadi '${status}'`);
+    ids.forEach((id) => {
+      const target = updated.find((s) => s.id === id);
+      if (target) apiUpdateSPH(id, target).catch((e) => console.error('D1 Batch Update SPH Error:', e));
+    });
+  };
+
+  const handleBatchDeletePks = (ids: string[]) => {
+    const lockedCount = pksList.filter((p) => ids.includes(p.id) && p.isLocked).length;
+    const deleteable = pksList.filter((p) => ids.includes(p.id) && !p.isLocked);
+
+    if (deleteable.length === 0) {
+      alert('Semua dokumen PKS yang dipilih sedang TERKUNCI.');
+      return;
+    }
+
+    const msg = lockedCount > 0
+      ? `${lockedCount} dokumen PKS TERKUNCI dan tidak akan dihapus. Yakin hapus ${deleteable.length} dokumen PKS sisanya?`
+      : `Yakin ingin menghapus ${deleteable.length} dokumen PKS terpilih sekaligus?`;
+
+    if (confirm(msg)) {
+      const deleteIds = deleteable.map((d) => d.id);
+      setPksList((prev) => prev.filter((p) => !deleteIds.includes(p.id)));
+      addActivityLog('Dihapus', 'PKS', 'Masal', `Menghapus ${deleteIds.length} dokumen PKS masal`);
+      deleteIds.forEach((id) => {
+        apiDeletePKS(id).catch((e) => console.error('D1 Batch Delete PKS Error:', e));
+      });
+    }
+  };
+
+  const handleBatchUpdatePksStatus = (ids: string[], status: PKS['status']) => {
+    const updated = pksList.map((p) => (ids.includes(p.id) ? { ...p, status } : p));
+    setPksList(updated);
+    addActivityLog('Status Diubah', 'PKS', 'Masal', `Mengubah status ${ids.length} PKS menjadi '${status}'`);
+    ids.forEach((id) => {
+      const target = updated.find((p) => p.id === id);
+      if (target) apiUpdatePKS(id, target).catch((e) => console.error('D1 Batch Update PKS Error:', e));
+    });
+  };
+
+  const handleBatchDeleteInvoice = (ids: string[]) => {
+    const lockedCount = invoices.filter((i) => ids.includes(i.id) && i.isLocked).length;
+    const deleteable = invoices.filter((i) => ids.includes(i.id) && !i.isLocked);
+
+    if (deleteable.length === 0) {
+      alert('Semua dokumen Invoice yang dipilih sedang TERKUNCI.');
+      return;
+    }
+
+    const msg = lockedCount > 0
+      ? `${lockedCount} dokumen Invoice TERKUNCI dan tidak akan dihapus. Yakin hapus ${deleteable.length} Invoice sisanya?`
+      : `Yakin ingin menghapus ${deleteable.length} dokumen Invoice terpilih sekaligus?`;
+
+    if (confirm(msg)) {
+      const deleteIds = deleteable.map((d) => d.id);
+      setInvoices((prev) => prev.filter((i) => !deleteIds.includes(i.id)));
+      addActivityLog('Dihapus', 'Invoice', 'Masal', `Menghapus ${deleteIds.length} dokumen Invoice masal`);
+      deleteIds.forEach((id) => {
+        apiDeleteInvoice(id).catch((e) => console.error('D1 Batch Delete Invoice Error:', e));
+      });
+    }
+  };
+
+  const handleBatchUpdateInvoiceStatus = (ids: string[], status: Invoice['status']) => {
+    const updated = invoices.map((i) => (ids.includes(i.id) ? { ...i, status } : i));
+    setInvoices(updated);
+    addActivityLog('Status Diubah', 'Invoice', 'Masal', `Mengubah status ${ids.length} Invoice menjadi '${status}'`);
+    ids.forEach((id) => {
+      const target = updated.find((i) => i.id === id);
+      if (target) apiUpdateInvoice(id, target).catch((e) => console.error('D1 Batch Update Invoice Error:', e));
+    });
   };
 
   const handleConfirmDeleteFromModal = () => {
@@ -833,6 +986,8 @@ export default function App() {
             onAddSph={handleAddSph}
             onUpdateSph={handleUpdateSph}
             onDeleteSph={handleDeleteSph}
+            onBatchDeleteSph={handleBatchDeleteSph}
+            onBatchUpdateSphStatus={handleBatchUpdateSphStatus}
             onConvertToPks={handleConvertToPks}
             onConvertToInvoice={handleConvertToInvoice}
             onPreviewSph={(sph) => setPreviewDoc({ type: 'SPH', data: sph })}
@@ -849,6 +1004,8 @@ export default function App() {
             onAddPks={handleAddPks}
             onUpdatePks={handleUpdatePks}
             onDeletePks={handleDeletePks}
+            onBatchDeletePks={handleBatchDeletePks}
+            onBatchUpdatePksStatus={handleBatchUpdatePksStatus}
             onPreviewPks={(pks) => setPreviewDoc({ type: 'PKS', data: pks })}
             onToggleLockDocument={handleToggleLockDocument}
           />
@@ -864,6 +1021,8 @@ export default function App() {
             onAddInvoice={handleAddInvoice}
             onUpdateInvoice={handleUpdateInvoice}
             onDeleteInvoice={handleDeleteInvoice}
+            onBatchDeleteInvoice={handleBatchDeleteInvoice}
+            onBatchUpdateInvoiceStatus={handleBatchUpdateInvoiceStatus}
             onPreviewInvoice={(inv) => setPreviewDoc({ type: 'Invoice', data: inv })}
             preSelectedCustomer={preSelectedCustomer}
             onUpdateCompanyProfile={handleUpdateProfile}

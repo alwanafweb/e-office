@@ -177,7 +177,7 @@ async function startServer() {
     }
 
     const recurringInvoices = db.invoices.filter(
-      (inv: any) => inv.billingType === 'monthly' || inv.autoSendMonthly === true
+      (inv: any) => inv.billingType === 'monthly' || inv.billingType === 'Bulanan' || inv.autoSendMonthly === true
     );
 
     let sentCount = 0;
@@ -262,10 +262,15 @@ async function startServer() {
     return { success: true, processedCount: sentCount, totalMonthly: recurringInvoices.length, details, lastRunTime: lastCronRunTime };
   }
 
-  // Periodic Cronjob Check (Every 6 hours)
+  // Initial Cronjob Check on Server Startup (5s delay)
+  setTimeout(() => {
+    processMonthlyRecurringInvoices(false).catch((err) => console.error('[CRON STARTUP ERROR]', err));
+  }, 5000);
+
+  // Periodic Cronjob Check (Every 1 hour)
   setInterval(() => {
     processMonthlyRecurringInvoices(false).catch((err) => console.error('[CRON ERROR]', err));
-  }, 6 * 60 * 60 * 1000);
+  }, 1 * 60 * 60 * 1000);
 
   // Manual trigger endpoint for Cronjob
   app.post('/api/invoices/trigger-recurring-cron', async (req, res) => {
@@ -283,7 +288,7 @@ async function startServer() {
 
   // Status endpoint for Cronjob
   app.get('/api/invoices/recurring-status', (req, res) => {
-    const monthlyList = db.invoices.filter((inv: any) => inv.billingType === 'monthly' || inv.autoSendMonthly === true);
+    const monthlyList = db.invoices.filter((inv: any) => inv.billingType === 'monthly' || inv.billingType === 'Bulanan' || inv.autoSendMonthly === true);
     
     const now = new Date();
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -298,16 +303,77 @@ async function startServer() {
     });
   });
 
+  // Temporary PDF Document Store for Email Attachments & Direct Downloads
+  const pdfStore = new Map<string, { filename: string; buffer: Buffer; contentType: string }>();
+
+  app.post('/api/documents/upload-pdf', (req, res) => {
+    try {
+      const { filename, base64Data } = req.body || {};
+      if (!base64Data) {
+        return res.status(400).json({ success: false, error: 'base64Data is required' });
+      }
+
+      const fileId = `pdf-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+      const pureBase64 = base64Data.replace(/^data:application\/pdf;base64,/, '').replace(/^data:image\/\w+;base64,/, '');
+      const buffer = Buffer.from(pureBase64, 'base64');
+
+      const cleanFilename = (filename || 'Dokumen_Resmi_LDI.pdf').replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+      const finalFilename = cleanFilename.endsWith('.pdf') ? cleanFilename : `${cleanFilename}.pdf`;
+
+      pdfStore.set(fileId, {
+        filename: finalFilename,
+        buffer,
+        contentType: 'application/pdf',
+      });
+
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const host = req.get('host');
+      const pdfUrl = `${protocol}://${host}/api/documents/pdf/${fileId}/${finalFilename}`;
+
+      res.json({
+        success: true,
+        fileId,
+        pdfUrl,
+        filename: finalFilename,
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.get('/api/documents/pdf/:fileId/:filename', (req, res) => {
+    const { fileId } = req.params;
+    const stored = pdfStore.get(fileId);
+    if (!stored) {
+      return res.status(404).send('Dokumen PDF tidak ditemukan atau telah kedaluwarsa.');
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${stored.filename}"`);
+    res.setHeader('Content-Length', stored.buffer.length);
+    res.send(stored.buffer);
+  });
+
   // Mailketing Email Dispatcher Helper
-  async function sendMailketingEmailServer(recipient: string, subject: string, content: string) {
+  async function sendMailketingEmailServer(
+    recipient: string,
+    subject: string,
+    content: string,
+    attachUrl?: string,
+    senderName: string = 'PT. LINTAS DATA INTERNASIONAL',
+    senderEmail: string = 'support@ldi.co.id'
+  ) {
     try {
       const params = new URLSearchParams();
       params.append('api_key', MAILKETING_API_KEY);
       params.append('recipient', recipient);
       params.append('subject', subject);
       params.append('content', content);
-      params.append('sender_name', 'PT. LINTAS DATA INTERNASIONAL');
-      params.append('sender_email', 'support@ldi.co.id');
+      params.append('sender_name', senderName);
+      params.append('sender_email', senderEmail);
+      if (attachUrl) {
+        params.append('attach1', attachUrl);
+      }
 
       const response = await fetch('https://api.mailketing.co.id/api/v1/send', {
         method: 'POST',
@@ -318,7 +384,7 @@ async function startServer() {
       });
 
       const text = await response.text();
-      console.log(`[MAILKETING API DISPATCH] Recipient: ${recipient} | Response: ${text.slice(0, 100)}`);
+      console.log(`[MAILKETING API DISPATCH] Recipient: ${recipient} | Sender: ${senderName} <${senderEmail}> | Attach: ${attachUrl || 'none'} | Response: ${text.slice(0, 150)}`);
       return { success: true, response: text };
     } catch (err: any) {
       console.error(`[MAILKETING ERROR]: ${err.message}`);
@@ -407,15 +473,27 @@ async function startServer() {
 
   // General Mailketing Proxy Route
   app.post('/api/mail/send', async (req, res) => {
-    const { recipient, subject, htmlContent } = req.body || {};
+    const { recipient, subject, htmlContent, content, senderName, senderEmail, attachmentUrl, attachUrl } = req.body || {};
     if (!recipient || !subject) {
       return res.status(400).json({ success: false, message: 'Penerima dan Subjek wajib diisi.' });
     }
 
-    const result = await sendMailketingEmailServer(recipient, subject, htmlContent || '<p>Notifikasi e-Office LDI</p>');
+    const finalContent = htmlContent || content || '<p>Notifikasi e-Office LDI</p>';
+    const finalAttachUrl = attachmentUrl || attachUrl;
+
+    const result = await sendMailketingEmailServer(
+      recipient,
+      subject,
+      finalContent,
+      finalAttachUrl,
+      senderName || 'PT. LINTAS DATA INTERNASIONAL',
+      senderEmail || 'admin@ldi.co.id'
+    );
+
     return res.json({
       success: result.success,
-      message: result.success ? `Email terkirim ke ${recipient} via Mailketing API.` : `Gagal mengirim email: ${result.error}`
+      message: result.success ? `Email terkirim ke ${recipient} via Mailketing API.` : `Gagal mengirim email: ${result.error}`,
+      data: result.response,
     });
   });
 
@@ -431,6 +509,59 @@ async function startServer() {
       count: (customers?.length || 0) + (sphs?.length || 0) + (pkss?.length || 0) + (invoices?.length || 0),
     });
   });
+
+  // Auto-Merge Discrepancies Sync Endpoint (Cloudflare D1 <-> Server DB)
+  app.post('/api/sync/auto-merge', (req, res) => {
+    const { customers = [], sphs = [], pkss = [], invoices = [] } = req.body || {};
+
+    let discrepanciesResolved = 0;
+
+    const mergeCollection = (localItems: any[], serverItems: any[]) => {
+      const itemMap = new Map<string, any>();
+      serverItems.forEach((i) => i.id && itemMap.set(i.id, i));
+
+      localItems.forEach((item) => {
+        if (!item || !item.id) return;
+        if (!itemMap.has(item.id)) {
+          itemMap.set(item.id, item);
+          discrepanciesResolved++;
+        } else {
+          const existing = itemMap.get(item.id);
+          const t1 = new Date(item.updatedAt || item.createdAt || 0).getTime();
+          const t2 = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+          if (t1 > t2) {
+            itemMap.set(item.id, item);
+            discrepanciesResolved++;
+          }
+        }
+      });
+      return Array.from(itemMap.values());
+    };
+
+    db.customers = mergeCollection(customers, db.customers);
+    db.sphs = mergeCollection(sphs, db.sphs);
+    db.pkss = mergeCollection(pkss, db.pkss);
+    db.invoices = mergeCollection(invoices, db.invoices);
+
+    return res.json({
+      success: true,
+      message: `Data auto-merged successfully with Cloudflare D1 local logs.`,
+      discrepanciesResolved,
+      timestamp: new Date().toISOString(),
+      data: {
+        customers: db.customers,
+        sphs: db.sphs,
+        pkss: db.pkss,
+        invoices: db.invoices,
+      },
+    });
+  });
+
+  // Recurring 60-Second Server Background D1 Log Check
+  setInterval(() => {
+    const totalRecords = db.customers.length + db.sphs.length + db.pkss.length + db.invoices.length;
+    console.log(`[D1 AUTO-SYNC 60s LOG] Server DB active records: ${totalRecords} | Customers: ${db.customers.length}, SPH: ${db.sphs.length}, PKS: ${db.pkss.length}, Invoice: ${db.invoices.length}`);
+  }, 60 * 1000);
 
   // Serve Vite in development mode or static files in production mode
   if (process.env.NODE_ENV !== 'production') {

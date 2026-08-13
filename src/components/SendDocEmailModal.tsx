@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { X, Send, Mail, CheckCircle2, AlertCircle, FileText, Lock, Paperclip, RefreshCw, Copy, Check } from 'lucide-react';
 import { CompanyProfile, Invoice, PKS, SPH } from '../types';
 import { formatIDR, formatDateIndonesian } from '../utils/formatters';
-import { exportToPdf } from '../utils/pdfGenerator';
+import { exportToPdf, generatePdfBase64 } from '../utils/pdfGenerator';
 import { sendEmail } from '../api/mailService';
+import { apiUploadPdf } from '../api/client';
 
 interface SendDocEmailModalProps {
   isOpen: boolean;
@@ -132,22 +133,74 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
     setIsSending(true);
 
     try {
-      // Step 1: Render PDF Attachment Buffer
-      setSendStep('1/3 Membuat Berkas PDF & Tanda Tangan Digital SHA-256...');
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      // Step 1: Render PDF Attachment Buffer from DOM
+      setSendStep('1/3 Merender Dokumen PDF & Tanda Tangan Digital...');
+      
+      const fileName = `${type}_${docNumber.replace(/\//g, '_')}.pdf`;
+      let attachedPdfUrl: string | undefined = undefined;
 
-      // Step 2: Connect to Email Gateway Server
-      setSendStep('2/3 Menghubungkan ke API Mailketing (Key: 5aafffa0...)...');
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Generate actual PDF base64 from printable element if present
+      const pdfResult = await generatePdfBase64('printable-document-content', fileName);
+      if (pdfResult && pdfResult.base64) {
+        setSendStep('2/3 Mengunggah Berkas PDF ke Server Gateway LDI...');
+        try {
+          const uploadRes = await apiUploadPdf(pdfResult.filename, pdfResult.base64);
+          if (uploadRes && uploadRes.pdfUrl) {
+            attachedPdfUrl = uploadRes.pdfUrl;
+          }
+        } catch (uploadErr) {
+          console.warn('PDF upload warning:', uploadErr);
+        }
+      }
 
-      // Step 3: Dispatch email via API Mailketing
+      // Step 3: Format email content with interactive download card & verification link
       setSendStep('3/3 Mengirimkan Email & Lampiran PDF via Mailketing Gateway...');
+
+      const formattedContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; color: #0f172a;">
+          <div style="background-color: #0f172a; padding: 24px; text-align: center; color: #ffffff;">
+            <h2 style="margin: 0; font-size: 20px; text-transform: uppercase; letter-spacing: 1px; color: #38bdf8;">${companyProfile?.name || 'PT. LINTAS DATA INTERNASIONAL'}</h2>
+            <p style="margin: 4px 0 0 0; font-size: 12px; color: #94a3b8;">Pengiriman Dokumen Resmi ${type} (${docNumber})</p>
+          </div>
+          <div style="padding: 24px;">
+            <div style="font-size: 13px; line-height: 1.6; color: #334155;">
+              ${messageBody.replace(/\n/g, '<br/>')}
+            </div>
+
+            ${attachedPdfUrl ? `
+              <div style="background-color: #f0f9ff; border: 2px solid #0284c7; border-radius: 12px; padding: 18px; margin: 24px 0; text-align: center;">
+                <p style="margin: 0 0 8px 0; font-size: 13px; font-weight: bold; color: #0369a1;">📄 Lampiran Dokumen PDF Resmi Terlampir</p>
+                <p style="margin: 0 0 14px 0; font-size: 11px; color: #64748b; font-family: monospace;">${fileName}</p>
+                <a href="${attachedPdfUrl}" target="_blank" style="background-color: #0284c7; color: #ffffff; padding: 11px 22px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 13px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                  📥 Unduh Berkas PDF Dokumen (${type})
+                </a>
+                <p style="margin: 12px 0 0 0; font-size: 10px; color: #64748b;">Dokumen ini telah ditandatangani dan diverifikasi secara digital oleh PT. LDI.</p>
+              </div>
+            ` : ''}
+
+            <div style="background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 14px; margin-top: 16px; font-size: 12px; color: #475569;">
+              <p style="margin: 0 0 4px 0; font-weight: bold; color: #0f172a;">🛡️ Verifikasi Keaslian Dokumen:</p>
+              <p style="margin: 0;">Anda juga dapat memverifikasi otentisitas dokumen ini secara langsung via Portal Keaslian PT. LDI:<br/>
+              <a href="https://jagoanserver.com/verify?doc=${encodeURIComponent(docNumber)}" style="color: #0284c7; font-weight: bold; text-decoration: underline;">
+                https://jagoanserver.com/verify?doc=${encodeURIComponent(docNumber)}
+              </a></p>
+            </div>
+          </div>
+
+          <div style="background-color: #f1f5f9; padding: 16px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0;">
+            Email ini dikirim secara otomatis oleh Mailketing Gateway ${companyProfile?.name || 'PT. LINTAS DATA INTERNASIONAL'}.<br/>
+            &copy; ${new Date().getFullYear()} ${companyProfile?.name || 'PT. LINTAS DATA INTERNASIONAL'}. All rights reserved.
+          </div>
+        </div>
+      `;
+
       await sendEmail({
         recipient: recipientEmail,
         subject,
-        content: messageBody.replace(/\n/g, '<br/>'),
+        content: formattedContent,
         senderName: companyProfile?.name || 'PT. LINTAS DATA INTERNASIONAL',
         senderEmail: companyProfile?.email || 'admin@ldi.co.id',
+        attachmentUrl: attachedPdfUrl,
       });
 
       const msgId = `<MSG-${Date.now().toString(36).toUpperCase()}-LDI-${Math.floor(1000 + Math.random() * 9000)}>`;
@@ -166,6 +219,7 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
         onSuccessSend(type, data.id, recipientEmail);
       }
     } catch (err) {
+      console.error('Error sending document email:', err);
       setIsSending(false);
       setErrorMsg('Gagal mengirimkan email. Silakan coba beberapa saat lagi.');
     }

@@ -19,6 +19,7 @@ import {
   Clock,
   Save,
   RotateCcw,
+  Edit2,
 } from 'lucide-react';
 import { Customer, ItemService, PKS, ServiceCategory, SPH, TechnicalSpec } from '../types';
 import { getDecryptedItem, setEncryptedItem, removeEncryptedItem } from '../utils/crypto';
@@ -31,6 +32,8 @@ interface SphViewProps {
   onAddSph: (sph: SPH) => void;
   onUpdateSph: (sph: SPH) => void;
   onDeleteSph: (id: string) => void;
+  onBatchDeleteSph?: (ids: string[]) => void;
+  onBatchUpdateSphStatus?: (ids: string[], status: SPH['status']) => void;
   onConvertToPks: (sph: SPH) => void;
   onConvertToInvoice: (sph: SPH) => void;
   onPreviewSph: (sph: SPH) => void;
@@ -44,6 +47,8 @@ export const SphView: React.FC<SphViewProps> = ({
   onAddSph,
   onUpdateSph,
   onDeleteSph,
+  onBatchDeleteSph,
+  onBatchUpdateSphStatus,
   onConvertToPks,
   onConvertToInvoice,
   onPreviewSph,
@@ -53,6 +58,11 @@ export const SphView: React.FC<SphViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('Semua');
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingSph, setEditingSph] = useState<SPH | null>(null);
+
+  // Bulk Selection States
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [batchTargetStatus, setBatchTargetStatus] = useState<SPH['status']>('Disetujui');
 
   // Form State
   const [selectedCustId, setSelectedCustId] = useState<string>(
@@ -62,7 +72,7 @@ export const SphView: React.FC<SphViewProps> = ({
   const [validityDays, setValidityDays] = useState<number>(14);
   const [useTax, setUseTax] = useState<boolean>(true);
 
-  const [items, setItems] = useState<ItemService[]>([
+  const defaultItems: ItemService[] = [
     {
       id: 'ITM-01',
       category: 'Internet Dedicated',
@@ -73,20 +83,50 @@ export const SphView: React.FC<SphViewProps> = ({
       price: 75000,
       discount: 0,
     },
-  ]);
+  ];
 
-  const [technicalSpecs, setTechnicalSpecs] = useState<TechnicalSpec[]>([
+  const defaultTechSpecs: TechnicalSpec[] = [
     { title: 'Bandwidth Ratio', value: '1:1 Symmetrical Dedicated' },
     { title: 'Service Level Agreement (SLA)', value: '99.9% Uptime Guarantee' },
     { title: 'Public IP Allocation', value: '/29 IPv4 Public Address' },
     { title: '24/7 Technical Support', value: 'NOC Dedicated Jagoanserver' },
-  ]);
+  ];
 
-  const [terms, setTerms] = useState<string[]>([
+  const defaultTerms: string[] = [
     'Harga belum termasuk PPN 11%.',
     'Masa berlaku penawaran harga ini adalah 14 hari kalender.',
     'Kontrak minimal berlangganan adalah 12 (dua belas) bulan.',
-  ]);
+  ];
+
+  const [items, setItems] = useState<ItemService[]>(defaultItems);
+  const [technicalSpecs, setTechnicalSpecs] = useState<TechnicalSpec[]>(defaultTechSpecs);
+  const [terms, setTerms] = useState<string[]>(defaultTerms);
+
+  const handleOpenCreateModal = () => {
+    setEditingSph(null);
+    setSelectedCustId(preSelectedCustomer ? preSelectedCustomer.id : customers[0]?.id || '');
+    setValidityDays(14);
+    setUseTax(true);
+    setItems(defaultItems);
+    setTechnicalSpecs(defaultTechSpecs);
+    setTerms(defaultTerms);
+    setIsFormOpen(true);
+  };
+
+  const handleOpenEditModal = (sph: SPH) => {
+    if (sph.isLocked) {
+      alert(`Dokumen SPH ${sph.sphNumber} sedang DIKUNCI (Locked). Silakan buka kunci dokumen terlebih dahulu jika ingin mengeditnya.`);
+      return;
+    }
+    setEditingSph(sph);
+    setSelectedCustId(sph.customerId);
+    setValidityDays(sph.validityDays || 14);
+    setUseTax((sph.taxPercent || 0) > 0);
+    setItems(sph.items && sph.items.length > 0 ? sph.items : defaultItems);
+    setTechnicalSpecs(sph.technicalSpecs && sph.technicalSpecs.length > 0 ? sph.technicalSpecs : defaultTechSpecs);
+    setTerms(sph.termsAndConditions && sph.termsAndConditions.length > 0 ? sph.termsAndConditions : defaultTerms);
+    setIsFormOpen(true);
+  };
 
   // Auto-Save Draft State (30 seconds interval)
   const [lastAutoSaveTime, setLastAutoSaveTime] = useState<string | null>(null);
@@ -224,35 +264,94 @@ export const SphView: React.FC<SphViewProps> = ({
     const cust = customers.find((c) => c.id === selectedCustId);
     if (!cust) return;
 
-    const newSph: SPH = {
-      id: `SPH-${Date.now()}`,
-      sphNumber: generateDocNumber('SPH', sphList.length + 1),
-      customerId: cust.id,
-      customerName: cust.companyName,
-      customerAddress: cust.address,
-      customerPhone: cust.phone,
-      customerEmail: cust.email,
-      date: new Date().toISOString().split('T')[0],
-      validityDays,
-      items,
-      technicalSpecs,
-      termsAndConditions: terms,
-      subtotal,
-      discountTotal,
-      taxPercent,
-      taxAmount,
-      grandTotal,
-      status: 'Disetujui',
-      signedByLDI: COMPANY_PROFILE.directorName,
-      signedDate: new Date().toISOString().split('T')[0],
-    };
+    if (editingSph) {
+      const updatedSph: SPH = {
+        ...editingSph,
+        customerId: cust.id,
+        customerName: cust.companyName,
+        customerAddress: cust.address,
+        customerPhone: cust.phone,
+        customerEmail: cust.email,
+        validityDays,
+        items,
+        technicalSpecs,
+        termsAndConditions: terms,
+        subtotal,
+        discountTotal,
+        taxPercent,
+        taxAmount,
+        grandTotal,
+      };
 
-    onAddSph(newSph);
-    removeEncryptedItem('ldi_draft_sph');
-    setHasDraftAvailable(false);
-    setLastAutoSaveTime(null);
-    setIsFormOpen(false);
-    onPreviewSph(newSph);
+      onUpdateSph(updatedSph);
+      removeEncryptedItem('ldi_draft_sph');
+      setHasDraftAvailable(false);
+      setLastAutoSaveTime(null);
+      setIsFormOpen(false);
+      onPreviewSph(updatedSph);
+    } else {
+      const newSph: SPH = {
+        id: `SPH-${Date.now()}`,
+        sphNumber: generateDocNumber('SPH', sphList.length + 1),
+        customerId: cust.id,
+        customerName: cust.companyName,
+        customerAddress: cust.address,
+        customerPhone: cust.phone,
+        customerEmail: cust.email,
+        date: new Date().toISOString().split('T')[0],
+        validityDays,
+        items,
+        technicalSpecs,
+        termsAndConditions: terms,
+        subtotal,
+        discountTotal,
+        taxPercent,
+        taxAmount,
+        grandTotal,
+        status: 'Disetujui',
+        signedByLDI: COMPANY_PROFILE.directorName,
+        signedDate: new Date().toISOString().split('T')[0],
+      };
+
+      onAddSph(newSph);
+      removeEncryptedItem('ldi_draft_sph');
+      setHasDraftAvailable(false);
+      setLastAutoSaveTime(null);
+      setIsFormOpen(false);
+      onPreviewSph(newSph);
+    }
+  };
+
+  const isAllSelected = filteredSphList.length > 0 && filteredSphList.every((s) => selectedIds.includes(s.id));
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredSphList.map((s) => s.id));
+    }
+  };
+
+  const handleToggleSelectOne = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleApplyBatchStatus = () => {
+    if (selectedIds.length === 0) return;
+    if (onBatchUpdateSphStatus) {
+      onBatchUpdateSphStatus(selectedIds, batchTargetStatus);
+      setSelectedIds([]);
+    }
+  };
+
+  const handleApplyBatchDelete = () => {
+    if (selectedIds.length === 0) return;
+    if (onBatchDeleteSph) {
+      onBatchDeleteSph(selectedIds);
+      setSelectedIds([]);
+    }
   };
 
   return (
@@ -270,7 +369,7 @@ export const SphView: React.FC<SphViewProps> = ({
         </div>
 
         <button
-          onClick={() => setIsFormOpen(true)}
+          onClick={handleOpenCreateModal}
           className="flex items-center gap-2 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition self-start md:self-auto"
         >
           <Plus className="w-4 h-4" />
@@ -307,12 +406,68 @@ export const SphView: React.FC<SphViewProps> = ({
         </div>
       </div>
 
+      {/* Bulk Selection Action Bar */}
+      {selectedIds.length > 0 && (
+        <div className="bg-blue-900 text-white p-3.5 px-5 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-md animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <span className="bg-cyan-500 text-slate-950 px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider">
+              {selectedIds.length} SPH Dipilih
+            </span>
+            <p className="text-xs text-blue-200 hidden sm:block">Pilih tindakan masal untuk dokumen SPH terpilih</p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 bg-blue-950 p-1 rounded-xl border border-blue-800">
+              <select
+                value={batchTargetStatus}
+                onChange={(e) => setBatchTargetStatus(e.target.value as SPH['status'])}
+                className="bg-transparent text-xs text-white font-bold focus:outline-none px-2 py-1"
+              >
+                <option value="Disetujui" className="text-slate-900">Status: Disetujui</option>
+                <option value="Draft" className="text-slate-900">Status: Draft</option>
+                <option value="Dikirim" className="text-slate-900">Status: Dikirim</option>
+                <option value="Ditolak" className="text-slate-900">Status: Ditolak</option>
+              </select>
+              <button
+                onClick={handleApplyBatchStatus}
+                className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs px-3 py-1.5 rounded-lg transition cursor-pointer"
+              >
+                Ubah Status
+              </button>
+            </div>
+
+            <button
+              onClick={handleApplyBatchDelete}
+              className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Hapus ({selectedIds.length})
+            </button>
+
+            <button
+              onClick={() => setSelectedIds([])}
+              className="text-xs text-blue-300 hover:text-white px-2 py-1 transition cursor-pointer"
+            >
+              Batal Pilih
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* SPH Table View */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto touch-scroll no-scrollbar">
-          <table className="w-full text-left text-xs border-collapse min-w-[720px]">
+          <table className="w-full text-left text-xs border-collapse min-w-[760px]">
             <thead>
               <tr className="bg-slate-900 text-white font-bold uppercase tracking-wider">
+                <th className="p-3.5 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={isAllSelected}
+                    onChange={handleToggleSelectAll}
+                    className="w-4 h-4 rounded border-slate-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  />
+                </th>
                 <th className="p-3.5">Nomor SPH</th>
                 <th className="p-3.5">Pelanggan Target</th>
                 <th className="p-3.5">Tanggal</th>
@@ -323,9 +478,24 @@ export const SphView: React.FC<SphViewProps> = ({
             </thead>
             <tbody>
               {filteredSphList.length > 0 ? (
-                filteredSphList.map((sph) => (
-                  <tr key={sph.id} className="border-b border-slate-100 hover:bg-slate-50/80">
-                    <td className="p-3.5 font-mono font-bold text-blue-900">{sph.sphNumber}</td>
+                filteredSphList.map((sph) => {
+                  const isSelected = selectedIds.includes(sph.id);
+                  return (
+                    <tr
+                      key={sph.id}
+                      className={`border-b border-slate-100 transition ${
+                        isSelected ? 'bg-blue-50/70' : 'hover:bg-slate-50/80'
+                      }`}
+                    >
+                      <td className="p-3.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelectOne(sph.id)}
+                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                      </td>
+                      <td className="p-3.5 font-mono font-bold text-blue-900">{sph.sphNumber}</td>
                     <td className="p-3.5 font-bold text-slate-800">{sph.customerName}</td>
                     <td className="p-3.5 text-slate-600">{formatDateIndonesian(sph.date)}</td>
                     <td className="p-3.5 text-right font-mono font-bold text-slate-900">
@@ -388,6 +558,18 @@ export const SphView: React.FC<SphViewProps> = ({
                         )}
 
                         <button
+                          onClick={() => handleOpenEditModal(sph)}
+                          className={`p-1.5 rounded transition ${
+                            sph.isLocked
+                              ? 'text-slate-300 cursor-not-allowed'
+                              : 'text-slate-600 hover:text-blue-900 hover:bg-slate-100'
+                          }`}
+                          title={sph.isLocked ? 'Dokumen Terkunci (Buka kunci untuk mengedit)' : 'Edit SPH'}
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+
+                        <button
                           onClick={() => onPreviewSph(sph)}
                           className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
                           title="Lihat / Cetak Kop Surat PDF"
@@ -426,10 +608,11 @@ export const SphView: React.FC<SphViewProps> = ({
                       </div>
                     </td>
                   </tr>
-                ))
+                );
+              })
               ) : (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-400 italic">
+                  <td colSpan={7} className="p-8 text-center text-slate-400 italic">
                     Belum ada Surat Penawaran Harga (SPH).
                   </td>
                 </tr>
@@ -446,13 +629,13 @@ export const SphView: React.FC<SphViewProps> = ({
             <div className="bg-slate-900 text-white px-4 sm:px-6 py-4 flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-sm uppercase tracking-wide flex items-center gap-2">
-                  <span>Buat Surat Penawaran Harga (SPH) Baru</span>
+                  <span>{editingSph ? `Edit Surat Penawaran Harga (${editingSph.sphNumber})` : 'Buat Surat Penawaran Harga (SPH) Baru'}</span>
                   <span className="bg-blue-800 text-cyan-200 text-[10px] font-mono px-2 py-0.5 rounded-full border border-blue-600/50 flex items-center gap-1">
                     <Save className="w-3 h-3 text-cyan-300 animate-pulse" /> Auto-Save 30s
                   </span>
                 </h3>
                 <p className="text-xs text-blue-300 font-mono mt-0.5">
-                  Nomor Auto: {generateDocNumber('SPH', sphList.length + 1)}
+                  Nomor Dokumen: {editingSph ? editingSph.sphNumber : generateDocNumber('SPH', sphList.length + 1)}
                   {lastAutoSaveTime && ` • Draf Tersimpan: ${lastAutoSaveTime}`}
                 </p>
               </div>

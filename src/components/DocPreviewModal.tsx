@@ -240,7 +240,10 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
             {headerMode === 'official' ? (
               <KopSuratHeader companyProfile={companyProfile} />
             ) : (
-              <div className="border-b border-slate-200 pb-2 mb-6 flex items-center justify-between text-[10px] text-slate-400 font-mono tracking-wider uppercase">
+              <div 
+                className="border-b border-slate-200 pb-2 mb-6 flex items-center justify-between text-[10px] text-slate-400 font-mono tracking-wider uppercase"
+                style={{ borderBottom: '1px solid #cbd5e1' }}
+              >
                 <span>{companyProfile?.legalName || 'PT. LINTAS DATA INTERNASIONAL'}</span>
                 <span>Dokumen Format Polos (Clean)</span>
               </div>
@@ -417,7 +420,10 @@ const SphDocumentView: React.FC<{ sph: SPH; showStamp: boolean; companyProfile?:
   const signatureImage = sph.signedByLDI || profile.defaultSignatureBase64;
   return (
     <div className="mt-6 space-y-6">
-      <div className="flex justify-between items-start border-b border-slate-200 pb-4">
+      <div 
+        className="flex justify-between items-start border-b border-slate-200 pb-4"
+        style={{ borderBottom: '1px solid #cbd5e1' }}
+      >
         <div>
           <h2 className="text-base font-bold text-blue-950 uppercase tracking-tight">
             SURAT PENAWARAN HARGA (SPH)
@@ -616,7 +622,10 @@ const PksDocumentView: React.FC<{ pks: PKS; showStamp: boolean; companyProfile?:
   const party1Sig = pks.party1SignatureData || profile.defaultSignatureBase64;
   return (
     <div className="mt-6 space-y-6">
-      <div className="text-center space-y-1 border-b border-slate-200 pb-4">
+      <div 
+        className="text-center space-y-1 border-b border-slate-200 pb-4"
+        style={{ borderBottom: '1px solid #cbd5e1' }}
+      >
         <h2 className="text-base font-black text-blue-950 uppercase tracking-tight">
           PERJANJIAN KERJA SAMA (PKS)
         </h2>
@@ -753,7 +762,10 @@ const InvoiceDocumentView: React.FC<{ invoice: Invoice; showStamp: boolean; comp
 
   return (
     <div className="mt-6 space-y-6">
-      <div className="flex justify-between items-start border-b border-slate-200 pb-4">
+      <div 
+        className="flex justify-between items-start border-b border-slate-200 pb-4"
+        style={{ borderBottom: '1px solid #cbd5e1' }}
+      >
         <div>
           <h2 className="text-lg font-black text-blue-950 uppercase tracking-tight">
             INVOICE / FAKTUR PENAGIHAN

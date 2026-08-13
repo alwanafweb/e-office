@@ -29,6 +29,7 @@ import {
   Zap,
   BellRing,
   Send,
+  Edit2,
 } from 'lucide-react';
 import { CompanyProfile, Customer, Invoice, ItemService, PaymentRecord, PKS, ServiceCategory, SPH } from '../types';
 import { getDecryptedItem, setEncryptedItem, removeEncryptedItem } from '../utils/crypto';
@@ -60,6 +61,8 @@ interface InvoiceViewProps {
   onAddInvoice: (invoice: Invoice) => void;
   onUpdateInvoice: (invoice: Invoice) => void;
   onDeleteInvoice: (id: string) => void;
+  onBatchDeleteInvoice?: (ids: string[]) => void;
+  onBatchUpdateInvoiceStatus?: (ids: string[], status: Invoice['status']) => void;
   onPreviewInvoice: (invoice: Invoice) => void;
   preSelectedCustomer?: Customer | null;
   onUpdateCompanyProfile?: (profile: CompanyProfile) => void;
@@ -75,6 +78,8 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
   onAddInvoice,
   onUpdateInvoice,
   onDeleteInvoice,
+  onBatchDeleteInvoice,
+  onBatchUpdateInvoiceStatus,
   onPreviewInvoice,
   preSelectedCustomer,
   onUpdateCompanyProfile,
@@ -83,6 +88,11 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('Semua');
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+
+  // Bulk Selection States
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [batchTargetStatus, setBatchTargetStatus] = useState<Invoice['status']>('Lunas');
   const [paymentModalInvoice, setPaymentModalInvoice] = useState<Invoice | null>(null);
   const [historyModalInvoice, setHistoryModalInvoice] = useState<Invoice | null>(null);
 
@@ -130,7 +140,7 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
   const [cronNotice, setCronNotice] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [cronStatus, setCronStatus] = useState<any>(null);
 
-  const [items, setItems] = useState<ItemService[]>([
+  const defaultInvoiceItems: ItemService[] = [
     {
       id: 'ITM-INV-01',
       category: 'Internet Dedicated',
@@ -141,7 +151,64 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
       price: 1000000,
       discount: 0,
     },
-  ]);
+  ];
+
+  const [items, setItems] = useState<ItemService[]>(defaultInvoiceItems);
+
+  const handleOpenCreateModal = () => {
+    setEditingInvoice(null);
+    setSelectedCustId(preSelectedCustomer ? preSelectedCustomer.id : customers[0]?.id || '');
+    setIssueDate(new Date().toISOString().split('T')[0]);
+    const d = new Date();
+    d.setDate(d.getDate() + 14);
+    setDueDate(d.toISOString().split('T')[0]);
+    setSphRef('');
+    setPksRef('');
+    setUseTax(true);
+    setBillingType('one_time');
+    setAutoSendMonthly(true);
+    setItems(defaultInvoiceItems);
+    setSelectedBankKey(String(defaultBankIndex));
+    setCustomNotes('');
+    setIsFormOpen(true);
+  };
+
+  const handleOpenEditModal = (inv: Invoice) => {
+    if (inv.isLocked) {
+      alert(`Dokumen Invoice ${inv.invoiceNumber} sedang DIKUNCI (Locked). Silakan buka kunci dokumen terlebih dahulu jika ingin mengeditnya.`);
+      return;
+    }
+    setEditingInvoice(inv);
+    setSelectedCustId(inv.customerId);
+    setIssueDate(inv.issueDate);
+    setDueDate(inv.dueDate);
+    setSphRef(inv.sphReference || '');
+    setPksRef(inv.pksReference || '');
+    setUseTax((inv.taxPercent || 0) > 0);
+    setBillingType(inv.billingType || 'one_time');
+    setAutoSendMonthly(inv.autoSendMonthly ?? true);
+    setItems(inv.items && inv.items.length > 0 ? inv.items : defaultInvoiceItems);
+
+    if (inv.bankInfo) {
+      const bankIdx = availableBanks.findIndex(
+        (b) => b.bankName === inv.bankInfo?.bankName && b.accountNumber === inv.bankInfo?.accountNumber
+      );
+      if (bankIdx >= 0) {
+        setSelectedBankKey(String(bankIdx));
+      } else {
+        setSelectedBankKey('CUSTOM');
+        setCustomBankName(inv.bankInfo.bankName || 'Bank Custom');
+        setCustomAccountNumber(inv.bankInfo.accountNumber || '');
+        setCustomAccountHolder(inv.bankInfo.accountHolder || '');
+        setCustomBranch(inv.bankInfo.branch || '');
+        setCustomNotes(inv.bankInfo.notes || '');
+      }
+    } else {
+      setSelectedBankKey(String(defaultBankIndex));
+    }
+
+    setIsFormOpen(true);
+  };
 
   // Auto-Save Draft State (30 seconds interval)
   const [lastAutoSaveTime, setLastAutoSaveTime] = useState<string | null>(null);
@@ -256,6 +323,8 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
 
   useEffect(() => {
     fetchCronStatus();
+    const interval = setInterval(fetchCronStatus, 300000); // Poll status every 5 minutes
+    return () => clearInterval(interval);
   }, []);
 
   const handleManualTriggerCron = async () => {
@@ -372,37 +441,80 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
       };
     }
 
-    const newInvoice: Invoice = {
-      id: `INV-${Date.now()}`,
-      invoiceNumber: generateDocNumber('INV', invoices.length + 1),
-      customerId: cust.id,
-      customerName: cust.companyName,
-      customerAddress: cust.address,
-      customerPhone: cust.phone,
-      customerEmail: cust.email,
-      sphReference: sphRef || undefined,
-      pksReference: pksRef || undefined,
-      issueDate,
-      dueDate,
-      billingType,
-      autoSendMonthly: billingType === 'monthly' ? autoSendMonthly : false,
-      items,
-      subtotal,
-      discountTotal,
-      taxPercent,
-      taxAmount,
-      grandTotal,
-      status: 'Belum Bayar',
-      bankInfo: selectedBankInfo,
-      signedByFinance: companyProfile?.financeManager || COMPANY_PROFILE.financeManager,
-    };
+    if (editingInvoice) {
+      const currentPaid = getInvoicePaidAmount(editingInvoice);
+      let updatedStatus = editingInvoice.status;
+      if (currentPaid >= grandTotal && grandTotal > 0) {
+        updatedStatus = 'Lunas';
+      } else if (currentPaid > 0) {
+        updatedStatus = 'Dibayar Sebagian';
+      } else if (updatedStatus === 'Lunas' || updatedStatus === 'Dibayar Sebagian') {
+        updatedStatus = 'Belum Bayar';
+      }
 
-    onAddInvoice(newInvoice);
-    removeEncryptedItem('ldi_draft_invoice');
-    setHasDraftAvailable(false);
-    setLastAutoSaveTime(null);
-    setIsFormOpen(false);
-    onPreviewInvoice(newInvoice);
+      const updatedInvoice: Invoice = {
+        ...editingInvoice,
+        customerId: cust.id,
+        customerName: cust.companyName,
+        customerAddress: cust.address,
+        customerPhone: cust.phone,
+        customerEmail: cust.email,
+        sphReference: sphRef || undefined,
+        pksReference: pksRef || undefined,
+        issueDate,
+        dueDate,
+        billingType,
+        autoSendMonthly: billingType === 'monthly' ? autoSendMonthly : false,
+        items,
+        subtotal,
+        discountTotal,
+        taxPercent,
+        taxAmount,
+        grandTotal,
+        status: updatedStatus,
+        paidAmount: currentPaid,
+        bankInfo: selectedBankInfo,
+      };
+
+      onUpdateInvoice(updatedInvoice);
+      removeEncryptedItem('ldi_draft_invoice');
+      setHasDraftAvailable(false);
+      setLastAutoSaveTime(null);
+      setIsFormOpen(false);
+      onPreviewInvoice(updatedInvoice);
+    } else {
+      const newInvoice: Invoice = {
+        id: `INV-${Date.now()}`,
+        invoiceNumber: generateDocNumber('INV', invoices.length + 1),
+        customerId: cust.id,
+        customerName: cust.companyName,
+        customerAddress: cust.address,
+        customerPhone: cust.phone,
+        customerEmail: cust.email,
+        sphReference: sphRef || undefined,
+        pksReference: pksRef || undefined,
+        issueDate,
+        dueDate,
+        billingType,
+        autoSendMonthly: billingType === 'monthly' ? autoSendMonthly : false,
+        items,
+        subtotal,
+        discountTotal,
+        taxPercent,
+        taxAmount,
+        grandTotal,
+        status: 'Belum Bayar',
+        bankInfo: selectedBankInfo,
+        signedByFinance: companyProfile?.financeManager || COMPANY_PROFILE.financeManager,
+      };
+
+      onAddInvoice(newInvoice);
+      removeEncryptedItem('ldi_draft_invoice');
+      setHasDraftAvailable(false);
+      setLastAutoSaveTime(null);
+      setIsFormOpen(false);
+      onPreviewInvoice(newInvoice);
+    }
   };
 
   const handleDeleteBankOption = (indexToDelete: number) => {
@@ -516,6 +628,38 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
     setHistoryModalInvoice(updated);
   };
 
+  const isAllSelected = filteredInvoices.length > 0 && filteredInvoices.every((i) => selectedIds.includes(i.id));
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredInvoices.map((i) => i.id));
+    }
+  };
+
+  const handleToggleSelectOne = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleApplyBatchStatus = () => {
+    if (selectedIds.length === 0) return;
+    if (onBatchUpdateInvoiceStatus) {
+      onBatchUpdateInvoiceStatus(selectedIds, batchTargetStatus);
+      setSelectedIds([]);
+    }
+  };
+
+  const handleApplyBatchDelete = () => {
+    if (selectedIds.length === 0) return;
+    if (onBatchDeleteInvoice) {
+      onBatchDeleteInvoice(selectedIds);
+      setSelectedIds([]);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -556,7 +700,7 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
           </button>
 
           <button
-            onClick={() => setIsFormOpen(true)}
+            onClick={handleOpenCreateModal}
             className="flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition cursor-pointer"
           >
             <Plus className="w-4 h-4" />
@@ -675,12 +819,70 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
         </div>
       </div>
 
+      {/* Bulk Selection Action Bar */}
+      {selectedIds.length > 0 && (
+        <div className="bg-emerald-950 text-white p-3.5 px-5 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-md animate-fadeIn border border-emerald-800">
+          <div className="flex items-center gap-3">
+            <span className="bg-emerald-500 text-slate-950 px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider">
+              {selectedIds.length} Invoice Dipilih
+            </span>
+            <p className="text-xs text-emerald-200 hidden sm:block">Pilih tindakan masal untuk faktur tagihan terpilih</p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-emerald-800">
+              <select
+                value={batchTargetStatus}
+                onChange={(e) => setBatchTargetStatus(e.target.value as Invoice['status'])}
+                className="bg-transparent text-xs text-white font-bold focus:outline-none px-2 py-1"
+              >
+                <option value="Lunas" className="text-slate-900">Status: Lunas</option>
+                <option value="Belum Bayar" className="text-slate-900">Status: Belum Bayar</option>
+                <option value="Dibayar Sebagian" className="text-slate-900">Status: Dibayar Sebagian</option>
+                <option value="Jatuh Tempo" className="text-slate-900">Status: Jatuh Tempo</option>
+                <option value="Draft" className="text-slate-900">Status: Draft</option>
+                <option value="Dibatalkan" className="text-slate-900">Status: Dibatalkan</option>
+              </select>
+              <button
+                onClick={handleApplyBatchStatus}
+                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs px-3 py-1.5 rounded-lg transition cursor-pointer"
+              >
+                Ubah Status
+              </button>
+            </div>
+
+            <button
+              onClick={handleApplyBatchDelete}
+              className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Hapus ({selectedIds.length})
+            </button>
+
+            <button
+              onClick={() => setSelectedIds([])}
+              className="text-xs text-emerald-300 hover:text-white px-2 py-1 transition cursor-pointer"
+            >
+              Batal Pilih
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Invoice Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto touch-scroll no-scrollbar">
-          <table className="w-full text-left text-xs border-collapse min-w-[780px]">
+          <table className="w-full text-left text-xs border-collapse min-w-[820px]">
             <thead>
               <tr className="bg-slate-900 text-white font-bold uppercase tracking-wider">
+                <th className="p-3.5 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={isAllSelected}
+                    onChange={handleToggleSelectAll}
+                    className="w-4 h-4 rounded border-slate-600 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                  />
+                </th>
                 <th className="p-3.5">Nomor Invoice</th>
                 <th className="p-3.5">Pelanggan Tagihan</th>
                 <th className="p-3.5">Tgl Terbit</th>
@@ -697,9 +899,23 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
                   const remaining = getInvoiceRemainingAmount(inv);
                   const percentPaid = inv.grandTotal > 0 ? Math.min(100, Math.round((paid / inv.grandTotal) * 100)) : 0;
                   const hasPayments = inv.payments && inv.payments.length > 0;
+                  const isSelected = selectedIds.includes(inv.id);
 
                   return (
-                    <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-50/80">
+                    <tr
+                      key={inv.id}
+                      className={`border-b border-slate-100 transition ${
+                        isSelected ? 'bg-emerald-50/70' : 'hover:bg-slate-50/80'
+                      }`}
+                    >
+                      <td className="p-3.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelectOne(inv.id)}
+                          className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                        />
+                      </td>
                       <td className="p-3.5">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <p className="font-mono font-bold text-blue-900">{inv.invoiceNumber}</p>
@@ -801,6 +1017,18 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
                           </button>
 
                           <button
+                            onClick={() => handleOpenEditModal(inv)}
+                            className={`p-1.5 rounded transition ${
+                              inv.isLocked
+                                ? 'text-slate-300 cursor-not-allowed'
+                                : 'text-slate-600 hover:text-emerald-800 hover:bg-slate-100'
+                            }`}
+                            title={inv.isLocked ? 'Dokumen Terkunci (Buka kunci untuk mengedit)' : 'Edit Invoice'}
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+
+                          <button
                             onClick={() => onPreviewInvoice(inv)}
                             className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
                             title="Lihat / Print PDF Invoice Kop Surat"
@@ -843,7 +1071,7 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
                 })
               ) : (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-400 italic">
+                  <td colSpan={8} className="p-8 text-center text-slate-400 italic">
                     Belum ada Invoice Tagihan.
                   </td>
                 </tr>
@@ -860,13 +1088,13 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
             <div className="bg-slate-900 text-white px-4 sm:px-6 py-4 flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-sm uppercase tracking-wide flex items-center gap-2">
-                  <span>Buat Invoice Penagihan Baru</span>
+                  <span>{editingInvoice ? `Edit Invoice (${editingInvoice.invoiceNumber})` : 'Buat Invoice Penagihan Baru'}</span>
                   <span className="bg-blue-800 text-cyan-200 text-[10px] font-mono px-2 py-0.5 rounded-full border border-blue-600/50 flex items-center gap-1 font-normal">
                     <Save className="w-3 h-3 text-cyan-300 animate-pulse" /> Auto-Save 30s
                   </span>
                 </h3>
                 <p className="text-xs text-blue-300 font-mono mt-0.5">
-                  Nomor Auto: {generateDocNumber('INV', invoices.length + 1)}
+                  Nomor Dokumen: {editingInvoice ? editingInvoice.invoiceNumber : generateDocNumber('INV', invoices.length + 1)}
                   {lastAutoSaveTime && ` • Draf Tersimpan: ${lastAutoSaveTime}`}
                 </p>
               </div>

@@ -9,6 +9,7 @@ export interface MailOptions {
   content: string;
   senderName?: string;
   senderEmail?: string;
+  attachmentUrl?: string;
 }
 
 export interface MailServiceResult {
@@ -29,59 +30,51 @@ const MAILKETING_API_URL = 'https://api.mailketing.co.id/api/v1/send';
  * Sends a generic email using Mailketing API
  */
 export async function sendEmail(options: MailOptions): Promise<MailServiceResult> {
-  const apiKey = getMailketingApiKey();
   const {
     recipient,
     subject,
     content,
     senderName = 'PT. LINTAS DATA INTERNASIONAL',
     senderEmail = 'admin@ldi.co.id',
+    attachmentUrl,
   } = options;
 
-  const params = new URLSearchParams();
-  params.append('api_key', apiKey);
-  params.append('recipient', recipient);
-  params.append('subject', subject);
-  params.append('content', content);
-  params.append('sender_name', senderName);
-  params.append('sender_email', senderEmail);
-
   try {
-    const response = await fetch(MAILKETING_API_URL, {
+    const response = await fetch('/api/mail/send', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
       },
-      body: params.toString(),
+      body: JSON.stringify({
+        recipient,
+        subject,
+        htmlContent: content,
+        senderName,
+        senderEmail,
+        attachmentUrl,
+      }),
     });
 
-    const responseText = await response.text();
-    let responseData: Record<string, unknown> = {};
+    const responseData = await response.json();
 
-    try {
-      responseData = JSON.parse(responseText);
-    } catch {
-      // Handle plain text response
-    }
-
-    if (response.ok || responseData.status === 'success' || responseData.code === 200) {
+    if (response.ok && responseData.success) {
       return {
         success: true,
-        message: 'Email successfully sent via Mailketing API.',
+        message: responseData.message || 'Email successfully sent via Mailketing API.',
         data: responseData,
       };
     } else {
       return {
-        success: true,
-        message: (responseData.message as string) || 'Email request dispatched to Mailketing gateway.',
+        success: false,
+        message: responseData.message || 'Gagal mengirim email via Mailketing API.',
         data: responseData,
       };
     }
-  } catch (err) {
-    console.warn('Mailketing API network notice:', err);
+  } catch (err: any) {
+    console.error('Mailketing proxy dispatch error:', err);
     return {
-      success: true,
-      message: `Email notification processed for ${recipient}.`,
+      success: false,
+      message: `Gagal menghubungkan ke server pengiriman email: ${err.message || 'Network error'}`,
     };
   }
 }

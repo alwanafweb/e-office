@@ -85,13 +85,39 @@ html.dark body {
 }
 
 /* Exception: Official Printable Document PDF preview MUST remain crisp white paper format */
-#printable-document-content,
-#printable-document-content * {
-  color: #0f172a !important;
-  border-color: #e2e8f0 !important;
-}
 #printable-document-content {
   background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+#printable-document-content p,
+#printable-document-content span,
+#printable-document-content td,
+#printable-document-content div,
+#printable-document-content h1,
+#printable-document-content h2,
+#printable-document-content h3,
+#printable-document-content h4,
+#printable-document-content h5,
+#printable-document-content h6,
+#printable-document-content li {
+  color: #0f172a;
+}
+
+/* Preserve white text for table headers, dark badges, and elements with explicit white text */
+#printable-document-content thead,
+#printable-document-content thead *,
+#printable-document-content th,
+#printable-document-content .text-white,
+#printable-document-content .bg-blue-950 *,
+#printable-document-content .bg-slate-900 * {
+  color: #ffffff !important;
+}
+
+#printable-document-content thead th,
+#printable-document-content thead tr {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
 }
 
 /* Print styling */
@@ -117,6 +143,16 @@ html.dark body {
     box-shadow: none !important;
     background: white !important;
     color: #000000 !important;
+  }
+
+  #printable-document-content thead th,
+  #printable-document-content thead tr,
+  #printable-document-content th,
+  #printable-document-content .text-white {
+    background-color: #0f172a !important;
+    color: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   .fixed, .backdrop-blur-sm {

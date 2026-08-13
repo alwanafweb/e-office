@@ -452,14 +452,18 @@ export default function App() {
 
     const monthlyVal = sph.items.reduce((acc, it) => acc + (it.qty * it.price - (it.discount || 0)), 0);
 
+    const cust = customers.find((c) => c.id === sph.customerId || c.companyName === sph.customerName);
+    const repName = sph.customerRepresentative || cust?.contactPerson || cust?.picName || 'Contact Person';
+    const repPos = cust?.picPosition || cust?.position || 'Direktur / Penanggung Jawab';
+
     const newPks: PKS = {
       id: `PKS-${Date.now()}`,
       pksNumber: newPksNumber,
       sphReferenceNumber: sph.sphNumber,
       customerId: sph.customerId,
       customerName: sph.customerName,
-      customerRepresentative: 'Contact Person',
-      customerRepPosition: 'Direktur / Penanggung Jawab',
+      customerRepresentative: repName,
+      customerRepPosition: repPos,
       customerAddress: sph.customerAddress,
       startDate: today,
       endDate: endDate.toISOString().split('T')[0],
@@ -532,6 +536,9 @@ export default function App() {
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 14);
 
+    const cust = customers.find((c) => c.id === sph.customerId || c.companyName === sph.customerName);
+    const repName = sph.customerRepresentative || cust?.contactPerson || cust?.picName || 'Contact Person';
+
     const newInvoice: Invoice = {
       id: `INV-${Date.now()}`,
       invoiceNumber: newInvoiceNumber,
@@ -540,6 +547,7 @@ export default function App() {
       customerAddress: sph.customerAddress,
       customerPhone: sph.customerPhone,
       customerEmail: sph.customerEmail,
+      customerRepresentative: repName,
       sphReference: sph.sphNumber,
       issueDate: today,
       dueDate: dueDate.toISOString().split('T')[0],
@@ -1101,6 +1109,7 @@ export default function App() {
           type={previewDoc.type}
           data={previewDoc.data}
           companyProfile={companyProfile}
+          customers={customers}
           onClose={() => setPreviewDoc(null)}
           onSignDocument={handleSignDocument}
           onUpdateStatusToSent={handleUpdateStatusToSent}

@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx';
 import { Invoice } from '../types';
 import { formatDateIndonesian, getMonthName } from './formatters';
 
@@ -16,13 +15,81 @@ export const getInvoiceRemainingAmount = (inv: Invoice): number => {
   return Math.max(0, inv.grandTotal - getInvoicePaidAmount(inv));
 };
 
+function escapeXml(str: string | number): string {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 /**
- * Ekspor Daftar Invoice ke File Excel (.xlsx)
+ * Native XML Spreadsheet Exporter (MIME: application/vnd.ms-excel)
+ * Works in MS Excel, Google Sheets, LibreOffice without third-party dependencies.
+ */
+export function downloadExcelXml(
+  sheets: { name: string; rows: (string | number)[][] }[],
+  filename: string
+) {
+  let xml = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"/>
+  </Style>
+  <Style ss:ID="Header">
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/>
+   <Interior ss:Color="#0F172A" ss:Pattern="Solid"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="Title">
+   <Font ss:FontName="Calibri" ss:Size="14" ss:Color="#0F172A" ss:Bold="1"/>
+  </Style>
+  <Style ss:ID="Bold">
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/>
+  </Style>
+ </Styles>
+`;
+
+  sheets.forEach((sheet) => {
+    xml += ` <Worksheet ss:Name="${escapeXml(sheet.name)}">\n  <Table>\n`;
+    sheet.rows.forEach((row) => {
+      xml += '   <Row>\n';
+      row.forEach((cell) => {
+        const isNum = typeof cell === 'number';
+        const type = isNum ? 'Number' : 'String';
+        xml += `    <Cell><Data ss:Type="${type}">${escapeXml(cell)}</Data></Cell>\n`;
+      });
+      xml += '   </Row>\n';
+    });
+    xml += '  </Table>\n </Worksheet>\n';
+  });
+
+  xml += '</Workbook>';
+
+  const blob = new Blob([xml], { type: 'application/vnd.ms-excel' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Ekspor Daftar Invoice ke File Excel (.xlsx / .xls)
  */
 export const exportInvoicesToExcel = (invoices: Invoice[], filenamePrefix: string = 'Daftar_Invoice_PT_LDI') => {
-  const wb = XLSX.utils.book_new();
-
-  // Prepare AOA (Array of Arrays) for clean header & styling capability
   const data: (string | number)[][] = [];
 
   // Title Block
@@ -107,44 +174,18 @@ export const exportInvoicesToExcel = (invoices: Invoice[], filenamePrefix: strin
     '',
   ]);
 
-  const ws = XLSX.utils.aoa_to_sheet(data);
-
-  // Column Width Auto Fit
-  const colWidths = [
-    { wch: 5 },  // No
-    { wch: 26 }, // No Invoice
-    { wch: 32 }, // Nama Pelanggan
-    { wch: 14 }, // Tgl Terbit
-    { wch: 14 }, // Tgl Jatuh Tempo
-    { wch: 45 }, // Layanan
-    { wch: 18 }, // Subtotal
-    { wch: 16 }, // PPN
-    { wch: 18 }, // Grand Total
-    { wch: 18 }, // Total Terbayar
-    { wch: 18 }, // Sisa Tagihan
-    { wch: 18 }, // Status
-    { wch: 30 }, // Bank
-    { wch: 12 }, // Jml Setoran
-  ];
-  ws['!cols'] = colWidths;
-
-  XLSX.utils.book_append_sheet(wb, ws, 'Daftar Invoice');
-
-  // Trigger Download
-  const filename = `${filenamePrefix}_${new Date().toISOString().split('T')[0]}.xlsx`;
-  XLSX.writeFile(wb, filename);
+  const filename = `${filenamePrefix}_${new Date().toISOString().split('T')[0]}.xls`;
+  downloadExcelXml([{ name: 'Daftar Invoice', rows: data }], filename);
 };
 
 /**
- * Ekspor Laporan Keuangan Bulanan & Tahunan Lengkap ke File Excel (.xlsx)
+ * Ekspor Laporan Keuangan Bulanan & Tahunan Lengkap ke File Excel (.xlsx / .xls)
  */
 export const exportFinancialReportToExcel = (
   invoices: Invoice[],
   selectedMonth: number,
   selectedYear: number
 ) => {
-  const wb = XLSX.utils.book_new();
-
   // Filter Invoices by month & year
   const monthInvoices = invoices.filter((inv) => {
     if (!inv.issueDate) return false;
@@ -211,16 +252,6 @@ export const exportFinancialReportToExcel = (
     yearlyInvVal > 0 ? `${Math.round((yearlyPaidVal / yearlyInvVal) * 100)}% Terbayar` : '0%',
   ]);
 
-  const wsSummary = XLSX.utils.aoa_to_sheet(summaryAoa);
-  wsSummary['!cols'] = [
-    { wch: 30 },
-    { wch: 22 },
-    { wch: 22 },
-    { wch: 22 },
-    { wch: 20 },
-  ];
-  XLSX.utils.book_append_sheet(wb, wsSummary, 'Ringkasan Keuangan');
-
   // --- SHEET 2: DETAIL INVOICE BULAN PILIHAN ---
   const detailAoa: (string | number)[][] = [];
   detailAoa.push(['DETAIL PENAGIHAN INVOICE']);
@@ -259,22 +290,6 @@ export const exportFinancialReportToExcel = (
     ]);
   });
 
-  const wsDetail = XLSX.utils.aoa_to_sheet(detailAoa);
-  wsDetail['!cols'] = [
-    { wch: 5 },
-    { wch: 26 },
-    { wch: 32 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 16 },
-    { wch: 14 },
-    { wch: 18 },
-    { wch: 18 },
-    { wch: 18 },
-    { wch: 18 },
-  ];
-  XLSX.utils.book_append_sheet(wb, wsDetail, `Invoice ${getMonthName(selectedMonth - 1)}`);
-
   // --- SHEET 3: JURNAL SETORAN CICILAN (PAYMENT JOURNAL) ---
   const journalAoa: (string | number)[][] = [];
   journalAoa.push(['JURNAL SETORAN & CICILAN PEMBAYARAN']);
@@ -311,7 +326,6 @@ export const exportFinancialReportToExcel = (
         ]);
       });
     } else if (inv.status === 'Lunas') {
-      // Fallback for single full payment record
       totalJournalPaid += inv.grandTotal;
       journalAoa.push([
         journalIndex++,
@@ -329,20 +343,13 @@ export const exportFinancialReportToExcel = (
   journalAoa.push([]);
   journalAoa.push(['TOTAL SETORAN DITERIMA', '', '', '', totalJournalPaid, '', '', '']);
 
-  const wsJournal = XLSX.utils.aoa_to_sheet(journalAoa);
-  wsJournal['!cols'] = [
-    { wch: 5 },
-    { wch: 26 },
-    { wch: 32 },
-    { wch: 14 },
-    { wch: 18 },
-    { wch: 22 },
-    { wch: 35 },
-    { wch: 18 },
-  ];
-  XLSX.utils.book_append_sheet(wb, wsJournal, 'Jurnal Setoran');
-
-  // Download File
-  const filename = `Laporan_Keuangan_PT_LDI_${getMonthName(selectedMonth - 1)}_${selectedYear}.xlsx`;
-  XLSX.writeFile(wb, filename);
+  const filename = `Laporan_Keuangan_PT_LDI_${getMonthName(selectedMonth - 1)}_${selectedYear}.xls`;
+  downloadExcelXml(
+    [
+      { name: 'Ringkasan Keuangan', rows: summaryAoa },
+      { name: `Invoice ${getMonthName(selectedMonth - 1)}`, rows: detailAoa },
+      { name: 'Jurnal Setoran', rows: journalAoa },
+    ],
+    filename
+  );
 };

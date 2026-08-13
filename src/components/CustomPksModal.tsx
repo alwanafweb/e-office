@@ -351,11 +351,12 @@ export const CustomPksModal: React.FC<CustomPksModalProps> = ({
     const found = customers.find((c) => c.id === custId);
     if (found) {
       setCustomerName(found.companyName);
-      setCustomerRepresentative(found.picName);
-      setCustomerRepPosition(found.picPosition || 'Direktur / Manajemen');
+      const rep = found.contactPerson || found.picName || 'Contact Person';
+      setCustomerRepresentative(rep);
+      setCustomerRepPosition(found.picPosition || found.position || 'Direktur / Manajemen');
       setCustomerAddress(found.address);
-      setParty2SignerName(found.picName);
-      setParty2SignerPosition(found.picPosition || 'Direktur / Manajemen');
+      setParty2SignerName(rep);
+      setParty2SignerPosition(found.picPosition || found.position || 'Direktur / Manajemen');
     }
   };
 
@@ -369,9 +370,11 @@ export const CustomPksModal: React.FC<CustomPksModalProps> = ({
         setSelectedCustomerId(foundSph.customerId);
       }
       setCustomerName(foundSph.customerName);
-      setCustomerRepresentative(foundSph.customerRepresentative);
+      const foundCust = customers.find((c) => c.id === foundSph.customerId || c.companyName === foundSph.customerName);
+      const rep = foundSph.customerRepresentative || foundCust?.contactPerson || foundCust?.picName || 'Contact Person';
+      setCustomerRepresentative(rep);
       setCustomerAddress(foundSph.customerAddress);
-      setParty2SignerName(foundSph.customerRepresentative);
+      setParty2SignerName(rep);
 
       if (foundSph.items && foundSph.items.length > 0) {
         setServiceItems(foundSph.items);

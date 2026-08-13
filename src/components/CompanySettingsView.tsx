@@ -298,8 +298,8 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
 
       <form onSubmit={handleSubmit} className="space-y-6 text-xs">
         {/* LOGO UPLOAD BOX */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-2">
             <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide flex items-center gap-2">
               <ImageIcon className="w-4 h-4 text-blue-600" />
               Logo Perusahaan (Kop Surat PDF & Navigation Bar)
@@ -308,16 +308,16 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
               <button
                 type="button"
                 onClick={handleRemoveLogo}
-                className="text-red-600 hover:text-red-700 text-xs font-bold flex items-center gap-1 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg border border-red-200 transition"
+                className="text-red-600 hover:text-red-700 text-xs font-bold flex items-center gap-1 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg border border-red-200 transition self-start sm:self-auto"
               >
                 <Trash2 className="w-3.5 h-3.5" /> Hapus Logo Custom
               </button>
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Upload Zone */}
-            <div className="md:col-span-2 space-y-3">
+            <div className="lg:col-span-7 xl:col-span-8 space-y-3">
               <div
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
@@ -355,7 +355,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg shadow-sm transition">
+                  <span className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] px-3.5 py-1.5 rounded-lg shadow-sm transition">
                     Pilih Berkas Gambar
                   </span>
                 </div>
@@ -373,18 +373,18 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                 </button>
 
                 {showUrlInput && (
-                  <div className="mt-2 flex gap-2">
+                  <div className="mt-2 flex flex-col sm:flex-row gap-2">
                     <input
                       type="url"
                       placeholder="https://example.com/logo-ldi.png"
                       value={urlInput}
                       onChange={(e) => setUrlInput(e.target.value)}
-                      className="flex-1 p-2 border border-slate-300 rounded-lg text-xs"
+                      className="flex-1 p-2.5 border border-slate-300 rounded-xl text-xs"
                     />
                     <button
                       type="button"
                       onClick={handleApplyUrl}
-                      className="bg-slate-800 hover:bg-slate-900 text-white font-bold px-3 py-2 rounded-lg text-xs transition"
+                      className="bg-slate-800 hover:bg-slate-900 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition"
                     >
                       Gunakan URL
                     </button>
@@ -394,15 +394,15 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
             </div>
 
             {/* Live Preview Card */}
-            <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 shadow-inner flex flex-col justify-between space-y-3">
+            <div className="lg:col-span-5 xl:col-span-4 bg-slate-900 text-white p-4.5 rounded-2xl border border-slate-800 shadow-inner flex flex-col justify-between space-y-4">
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
                   <FileImage className="w-3.5 h-3.5 text-cyan-400" /> Preview Kop Surat PDF
                 </p>
 
-                <div className="bg-white p-3 rounded-xl border border-slate-700 text-slate-900 flex items-center gap-3">
+                <div className="bg-white p-3.5 rounded-xl border border-slate-700 text-slate-900 flex items-center gap-3">
                   {profile.logoUrl ? (
-                    <div className="w-12 h-12 rounded-lg bg-white p-1 border border-slate-200 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    <div className="w-12 h-12 rounded-lg bg-white p-1 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
                       <img
                         src={profile.logoUrl}
                         alt="Logo Preview"
@@ -410,7 +410,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                       />
                     </div>
                   ) : (
-                    <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-900 to-indigo-900 flex items-center justify-center p-1.5 text-white flex-shrink-0">
+                    <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-900 to-indigo-900 flex items-center justify-center p-1.5 text-white shrink-0">
                       <svg viewBox="0 0 100 100" className="w-full h-full fill-none stroke-current" strokeWidth="6">
                         <rect x="15" y="15" width="70" height="22" rx="4" className="stroke-cyan-300 fill-blue-950/40" />
                         <rect x="15" y="44" width="70" height="22" rx="4" className="stroke-cyan-400 fill-blue-950/40" />
@@ -421,7 +421,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
 
                   <div className="min-w-0">
                     <p className="font-black text-xs text-blue-950 truncate">{profile.legalName}</p>
-                    <p className="text-[9px] text-slate-500 font-mono">{profile.website}</p>
+                    <p className="text-[9px] text-slate-500 font-mono truncate">{profile.website}</p>
                   </div>
                 </div>
               </div>
@@ -441,13 +441,13 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
         </div>
 
         {/* FAVICON UPLOAD BOX */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-          <div className="flex flex-wrap items-center justify-between border-b border-slate-100 pb-2 gap-2">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-2">
             <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide flex items-center gap-2">
               <Globe className="w-4 h-4 text-indigo-600" />
               Favicon / Icon Bar Browser Tab
             </h3>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {profile.logoUrl && !profile.faviconUrl && (
                 <button
                   type="button"
@@ -469,9 +469,9 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Upload Zone */}
-            <div className="md:col-span-2 space-y-3">
+            <div className="lg:col-span-7 xl:col-span-8 space-y-3">
               <div
                 onDragOver={handleFaviconDragOver}
                 onDragLeave={handleFaviconDragLeave}
@@ -509,7 +509,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg shadow-sm transition">
+                  <span className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] px-3.5 py-1.5 rounded-lg shadow-sm transition">
                     Pilih Berkas Favicon
                   </span>
                 </div>
@@ -527,18 +527,18 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                 </button>
 
                 {showFaviconUrlInput && (
-                  <div className="mt-2 flex gap-2">
+                  <div className="mt-2 flex flex-col sm:flex-row gap-2">
                     <input
                       type="url"
                       placeholder="https://example.com/favicon.png"
                       value={faviconUrlInput}
                       onChange={(e) => setFaviconUrlInput(e.target.value)}
-                      className="flex-1 p-2 border border-slate-300 rounded-lg text-xs"
+                      className="flex-1 p-2.5 border border-slate-300 rounded-xl text-xs"
                     />
                     <button
                       type="button"
                       onClick={handleApplyFaviconUrl}
-                      className="bg-slate-800 hover:bg-slate-900 text-white font-bold px-3 py-2 rounded-lg text-xs transition"
+                      className="bg-slate-800 hover:bg-slate-900 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition"
                     >
                       Gunakan URL
                     </button>
@@ -548,9 +548,9 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
             </div>
 
             {/* Live Browser Tab Preview Card */}
-            <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 shadow-inner flex flex-col justify-between space-y-3">
+            <div className="lg:col-span-5 xl:col-span-4 bg-slate-900 text-white p-4.5 rounded-2xl border border-slate-800 shadow-inner flex flex-col justify-between space-y-4">
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
                   <Globe className="w-3.5 h-3.5 text-cyan-400" /> Preview Browser Tab (Bar)
                 </p>
 
@@ -571,10 +571,10 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                         <img
                           src={profile.faviconUrl || profile.logoUrl}
                           alt="Favicon Tab"
-                          className="w-4 h-4 object-contain rounded-sm flex-shrink-0"
+                          className="w-4 h-4 object-contain rounded-sm shrink-0"
                         />
                       ) : (
-                        <span className="text-xs flex-shrink-0">🌐</span>
+                        <span className="text-xs shrink-0">🌐</span>
                       )}
                       <span className="text-[10px] font-semibold truncate text-slate-200">
                         {profile.name} - E-Office System
@@ -586,7 +586,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                   <div className="bg-slate-900 p-2 border-t border-slate-800/80">
                     <div className="bg-slate-950 px-2.5 py-1 rounded border border-slate-800 text-[10px] text-slate-400 font-mono flex items-center gap-1.5 truncate">
                       <span className="text-emerald-400">🔒</span>
-                      <span>https://{profile.website || 'jagoanserver.com'}</span>
+                      <span className="truncate">https://{profile.website || 'jagoanserver.com'}</span>
                     </div>
                   </div>
                 </div>
@@ -607,12 +607,15 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
             </div>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-          <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide border-b border-slate-100 pb-2">
+
+        {/* SECTION I: PROFIL & KONTAK RESMI */}
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide border-b border-slate-100 pb-2 flex items-center gap-2">
+            <Building className="w-4 h-4 text-blue-600" />
             I. Profil & Kontak Resmi Perusahaan
           </h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
             <div>
               <label className="font-bold text-slate-700 block mb-1">Nama Perusahaan / Legal Entity</label>
               <input
@@ -620,7 +623,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                 required
                 value={profile.legalName}
                 onChange={(e) => setProfile({ ...profile, legalName: e.target.value, name: e.target.value })}
-                className="w-full p-2.5 border border-slate-300 rounded-lg font-bold text-slate-900"
+                className="w-full p-2.5 border border-slate-300 rounded-xl font-bold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
             </div>
 
@@ -631,7 +634,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                 required
                 value={profile.website}
                 onChange={(e) => setProfile({ ...profile, website: e.target.value })}
-                className="w-full p-2.5 border border-slate-300 rounded-lg font-mono"
+                className="w-full p-2.5 border border-slate-300 rounded-xl font-mono text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
             </div>
 
@@ -642,7 +645,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                 required
                 value={profile.email}
                 onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                className="w-full p-2.5 border border-slate-300 rounded-lg"
+                className="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
             </div>
 
@@ -653,25 +656,25 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                 required
                 value={profile.whatsapp}
                 onChange={(e) => setProfile({ ...profile, whatsapp: e.target.value, phone: e.target.value })}
-                className="w-full p-2.5 border border-slate-300 rounded-lg font-mono"
+                className="w-full p-2.5 border border-slate-300 rounded-xl font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
             </div>
-          </div>
 
-          <div>
-            <label className="font-bold text-slate-700 block mb-1">Alamat Kantor Pusat (Kop Surat)</label>
-            <textarea
-              required
-              rows={3}
-              value={profile.address}
-              onChange={(e) => setProfile({ ...profile, address: e.target.value })}
-              className="w-full p-2.5 border border-slate-300 rounded-lg"
-            ></textarea>
+            <div className="sm:col-span-2">
+              <label className="font-bold text-slate-700 block mb-1">Alamat Kantor Pusat (Kop Surat)</label>
+              <textarea
+                required
+                rows={3}
+                value={profile.address}
+                onChange={(e) => setProfile({ ...profile, address: e.target.value })}
+                className="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none leading-relaxed"
+              ></textarea>
+            </div>
           </div>
         </div>
 
-        {/* Bank Details Box */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+        {/* SECTION II: REKENING BANK */}
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div>
               <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide flex items-center gap-2">
@@ -686,7 +689,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
             <button
               type="button"
               onClick={handleOpenAddBank}
-              className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm transition self-start sm:self-auto"
+              className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm transition self-start sm:self-auto shrink-0"
             >
               <PlusCircle className="w-4 h-4" />
               Tambah Rekening Resmi
@@ -705,7 +708,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-black text-blue-950 text-sm">{bank.bankName}</p>
                       {bank.isDefault && (
                         <span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
@@ -718,7 +721,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                     )}
                   </div>
 
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 shrink-0">
                     <button
                       type="button"
                       onClick={() => handleOpenEditBank(idx)}
@@ -780,71 +783,77 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
           </div>
         </div>
 
-        {/* Executive Signers */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        {/* SECTION III: PEJABAT PENANDATANGAN */}
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide border-b border-slate-100 pb-2">
             III. Pejabat Penandatangan Dokumen Penawaran, Kontrak & Invoice
           </h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <p className="font-bold text-slate-900">Penandatangan Utama (Direktur / SPH / PKS)</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+            <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <p className="font-bold text-slate-900 text-xs flex items-center gap-2">
+                <PenTool className="w-3.5 h-3.5 text-blue-600" />
+                Penandatangan Utama (Direktur / SPH / PKS)
+              </p>
               <div>
-                <label className="text-[10px] text-slate-500 font-bold block">Nama Lengkap & Gelar</label>
+                <label className="text-[10px] text-slate-500 font-bold block mb-1">Nama Lengkap & Gelar</label>
                 <input
                   type="text"
                   value={profile.directorName}
                   onChange={(e) => setProfile({ ...profile, directorName: e.target.value })}
-                  className="w-full p-2 border border-slate-300 rounded font-bold"
+                  className="w-full p-2.5 border border-slate-300 rounded-lg font-bold text-slate-900 bg-white"
                 />
               </div>
               <div>
-                <label className="text-[10px] text-slate-500 font-bold block">Jabatan</label>
+                <label className="text-[10px] text-slate-500 font-bold block mb-1">Jabatan</label>
                 <input
                   type="text"
                   value={profile.directorPosition}
                   onChange={(e) => setProfile({ ...profile, directorPosition: e.target.value })}
-                  className="w-full p-2 border border-slate-300 rounded"
+                  className="w-full p-2.5 border border-slate-300 rounded-lg bg-white"
                 />
               </div>
             </div>
 
-            <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <p className="font-bold text-slate-900">Penandatangan Keuangan (Finance / Invoice)</p>
+            <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <p className="font-bold text-slate-900 text-xs flex items-center gap-2">
+                <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                Penandatangan Keuangan (Finance / Invoice)
+              </p>
               <div>
-                <label className="text-[10px] text-slate-500 font-bold block">Nama Manager Finance</label>
+                <label className="text-[10px] text-slate-500 font-bold block mb-1">Nama Manager Finance</label>
                 <input
                   type="text"
                   value={profile.financeManager}
                   onChange={(e) => setProfile({ ...profile, financeManager: e.target.value })}
-                  className="w-full p-2 border border-slate-300 rounded font-bold"
+                  className="w-full p-2.5 border border-slate-300 rounded-lg font-bold text-slate-900 bg-white"
                 />
               </div>
             </div>
           </div>
         </div>
 
-        {/* DIGITAL SIGNATURE UPLOAD BOX */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-          <div className="flex flex-wrap items-center justify-between border-b border-slate-100 pb-2">
+        {/* SECTION IV: DIGITAL SIGNATURE & STAMP PREVIEW */}
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-3">
             <div>
               <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                <ShieldCheck className="w-4.5 h-4.5 text-emerald-600" />
                 IV. Upload & Tanda Tangan Digital Direksi (.PNG / Canvas Pad)
               </h3>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                Gambar tanda tangan akan otomatis ditempelkan secara presisi pada setiap dokumen PDF SPH, PKS, & Invoice saat di-generate.
+                Gambar tanda tangan dan stempel resmi akan ditempelkan secara otomatis pada setiap dokumen PDF SPH, PKS, & Invoice.
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200">
                 <button
                   type="button"
                   onClick={() => setSigMode('upload')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
                     sigMode === 'upload'
-                      ? 'bg-emerald-700 text-white shadow-sm'
+                      ? 'bg-emerald-700 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -853,9 +862,9 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setSigMode('draw')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
                     sigMode === 'draw'
-                      ? 'bg-emerald-700 text-white shadow-sm'
+                      ? 'bg-emerald-700 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -875,9 +884,9 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Upload or Draw Zone */}
-            <div className="md:col-span-2 space-y-3">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Upload or Draw Pad Zone */}
+            <div className="lg:col-span-7 xl:col-span-7 space-y-4">
               {sigMode === 'upload' ? (
                 <div
                   onDragOver={(e) => {
@@ -948,61 +957,78 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                 />
               )}
 
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-[11px] text-emerald-900 flex items-start gap-2">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-[11px] text-emerald-900 flex items-start gap-2.5">
                 <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <div>
-                  <strong>Otomatisasi PDF Aktif:</strong> Setelah diunggah dan disimpan, tanda tangan digital ini akan langsung disematkan pada seluruh cetakan PDF Surat Penawaran Harga (SPH), Perjanjian Kerja Sama (PKS), dan Invoice Penagihan resmi.
+                <div className="leading-relaxed">
+                  <strong>Otomatisasi PDF Aktif:</strong> Setelah diunggah dan disimpan, tanda tangan digital dan stempel resmi ini akan langsung disematkan pada seluruh cetakan PDF SPH, PKS, dan Invoice Penagihan resmi.
                 </div>
               </div>
             </div>
 
-            {/* Live Preview Signature Box */}
-            <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 shadow-inner flex flex-col justify-between space-y-3">
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <FileImage className="w-3.5 h-3.5 text-cyan-400" /> Preview Pada Dokumen PDF
+            {/* Live Preview Signature & Stamp Box */}
+            <div className="lg:col-span-5 xl:col-span-5 bg-gradient-to-br from-slate-900 to-slate-950 text-white p-5 rounded-2xl border border-slate-800 shadow-xl space-y-4 lg:sticky lg:top-6">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                <p className="text-[11px] font-extrabold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <FileImage className="w-4 h-4 text-cyan-400" /> Pratinjau Stempel & TTD PDF
                 </p>
-
-                <div className="bg-white p-4 rounded-xl border border-slate-300 text-slate-900 text-center relative overflow-hidden min-h-[110px] flex flex-col items-center justify-center">
-                  <p className="text-[10px] text-slate-500 mb-1">Hormat Kami,</p>
-                  <p className="font-bold text-[11px] text-blue-950 mb-1">{profile.legalName}</p>
-
-                  <div className="relative my-1 h-14 w-full flex items-center justify-center">
-                    {/* Stamp Overlay */}
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40">
-                      <div className="border border-red-600 rounded-full w-14 h-14 flex items-center justify-center rotate-[-12deg]">
-                        <span className="text-[6px] font-black text-red-600 uppercase text-center leading-none">
-                          PT LDI STAMP
-                        </span>
-                      </div>
-                    </div>
-
-                    {profile.defaultSignatureBase64 ? (
-                      <img
-                        src={profile.defaultSignatureBase64}
-                        alt="Preview TTD Transparan"
-                        className="max-h-12 max-w-[140px] object-contain z-10"
-                      />
-                    ) : (
-                      <span className="text-[10px] text-slate-400 font-serif italic border-b border-slate-300 px-3">
-                        [Tanda Tangan Belum Diunggah]
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="font-bold text-[11px] text-slate-900 underline mt-1">{profile.directorName}</p>
-                  <p className="text-[9px] text-slate-500">{profile.directorPosition}</p>
-                </div>
+                <span className="bg-cyan-950 text-cyan-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-cyan-800">
+                  Simulasi SPH / PKS
+                </span>
               </div>
 
-              <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700 text-[10px] text-slate-300 space-y-1">
-                <p className="font-bold text-cyan-300">Status Tanda Tangan:</p>
-                <p>
+              {/* Realistic Paper Slip Preview */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 text-slate-900 text-center relative overflow-hidden shadow-sm space-y-1">
+                <p className="text-[10px] text-slate-500 font-medium">Jakarta, {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                <p className="text-[10px] font-semibold text-slate-600">Hormat Kami,</p>
+                <p className="font-extrabold text-xs text-blue-950">{profile.legalName}</p>
+
+                {/* Stamp & Signature Container */}
+                <div className="relative my-2 py-1 h-20 w-full flex items-center justify-center overflow-hidden">
+                  {/* Official Company Stamp Overlay (Realistic Crimson/Red Stamp Ring) */}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-85 select-none">
+                    <div className="border-2 border-red-600 rounded-full w-18 h-18 flex flex-col items-center justify-center rotate-[-12deg] p-1 bg-red-50/10 shadow-2xs">
+                      <div className="border border-red-500 border-dashed rounded-full w-full h-full flex flex-col items-center justify-center p-0.5 text-[6px] font-black text-red-600 uppercase text-center leading-tight">
+                        <span className="text-[5.5px] tracking-tight">PT LINTAS DATA</span>
+                        <span className="text-[5px] text-red-500 font-serif my-0.2">★ STAMP ★</span>
+                        <span className="text-[5.5px] tracking-tight">INTERNASIONAL</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Digital Signature Overlay */}
                   {profile.defaultSignatureBase64 ? (
-                    <span className="text-emerald-400 font-semibold">✓ TTD Digital PNG Tersimpan</span>
+                    <img
+                      src={profile.defaultSignatureBase64}
+                      alt="Preview TTD Transparan"
+                      className="max-h-16 max-w-[160px] object-contain z-10 filter drop-shadow-xs transition-all duration-200"
+                    />
                   ) : (
-                    <span className="text-amber-400 font-semibold">⚠ Menggunakan Placeholder Teks</span>
+                    <div className="z-10 py-2 px-4 border-b border-slate-300 text-slate-400 font-serif italic text-[11px]">
+                      [Tanda Tangan Belum Diunggah]
+                    </div>
                   )}
+                </div>
+
+                <p className="font-bold text-xs text-slate-900 underline decoration-slate-400 decoration-1 underline-offset-2">{profile.directorName || 'Nama Direktur'}</p>
+                <p className="text-[10px] text-slate-500 font-medium">{profile.directorPosition || 'Direktur Utama'}</p>
+              </div>
+
+              {/* Status Footer */}
+              <div className="bg-slate-800/90 p-3 rounded-xl border border-slate-700/80 text-[10px] text-slate-300 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-cyan-300">Status Stempel & TTD:</span>
+                  {profile.defaultSignatureBase64 ? (
+                    <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Digital PNG Active
+                    </span>
+                  ) : (
+                    <span className="bg-amber-500/20 text-amber-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-500/30">
+                      ⚠ Placeholder Teks
+                    </span>
+                  )}
+                </div>
+                <p className="text-slate-400 text-[10px] leading-tight">
+                  Stempel merah & tanda tangan transparan akan dicetak otomatis di bagian bawah dokumen resmi.
                 </p>
               </div>
             </div>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Printer, Download, Mail, CheckCircle2, ShieldAlert, Receipt, FileCheck, PenTool, Upload, Check, Lock, Unlock, Eraser } from 'lucide-react';
-import { CompanyProfile, Invoice, PKS, SPH } from '../types';
+import { CompanyProfile, Customer, Invoice, PKS, SPH } from '../types';
 import { KopSuratHeader } from './KopSuratHeader';
 import { QRCodeBadge } from './QRCodeBadge';
 import { SendDocEmailModal } from './SendDocEmailModal';
@@ -9,10 +9,32 @@ import { formatDateIndonesian, formatIDR, terbilangRupiah } from '../utils/forma
 import { COMPANY_PROFILE } from '../data/initialData';
 import { exportToPdf } from '../utils/pdfGenerator';
 
+export const getContactPersonName = (
+  docRep?: string,
+  customerId?: string,
+  customerName?: string,
+  customers?: Customer[]
+) => {
+  if (docRep && docRep.trim() !== '' && docRep !== 'Contact Person') {
+    return docRep;
+  }
+  if (customers && customers.length > 0) {
+    const found = customers.find(
+      (c) => (customerId && c.id === customerId) || c.companyName === customerName
+    );
+    if (found) {
+      if (found.contactPerson && found.contactPerson.trim() !== '') return found.contactPerson;
+      if (found.picName && found.picName.trim() !== '') return found.picName;
+    }
+  }
+  return docRep || 'Contact Person';
+};
+
 interface DocPreviewModalProps {
   type: 'SPH' | 'PKS' | 'Invoice';
   data: SPH | PKS | Invoice;
   companyProfile?: CompanyProfile;
+  customers?: Customer[];
   onClose: () => void;
   onSignDocument?: (type: 'SPH' | 'PKS' | 'Invoice', id: string, signatureData: string) => void;
   onUpdateStatusToSent?: (type: 'SPH' | 'PKS' | 'Invoice', id: string) => void;
@@ -25,6 +47,7 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
   type,
   data,
   companyProfile,
+  customers,
   onClose,
   onSignDocument,
   onUpdateStatusToSent,
@@ -234,7 +257,7 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
         <div className="flex-1 overflow-y-auto overflow-x-auto p-2 sm:p-8 bg-slate-100 print:bg-white print:p-0 touch-scroll">
           <div
             id="printable-document-content"
-            className="bg-white text-slate-900 mx-auto max-w-[210mm] min-h-[297mm] p-4 sm:p-12 shadow-lg border border-slate-200 rounded-lg print:shadow-none print:border-none print:rounded-none relative text-xs leading-relaxed font-sans min-w-[280px]"
+            className="bg-white text-slate-900 mx-auto max-w-[210mm] min-h-[297mm] print:min-h-0 p-4 sm:p-8 print:p-0 shadow-lg border border-slate-200 rounded-lg print:shadow-none print:border-none print:rounded-none print:m-0 relative text-xs leading-relaxed font-sans min-w-[280px]"
           >
             {/* KopSurat Header - Rendered in Official Mode */}
             {headerMode === 'official' ? (
@@ -250,9 +273,9 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
             )}
 
             {/* DOCUMENT CONTENT BRANCH */}
-            {type === 'SPH' && <SphDocumentView sph={docData as SPH} showStamp={showStamp} companyProfile={companyProfile} />}
-            {type === 'PKS' && <PksDocumentView pks={docData as PKS} showStamp={showStamp} companyProfile={companyProfile} />}
-            {type === 'Invoice' && <InvoiceDocumentView invoice={docData as Invoice} showStamp={showStamp} companyProfile={companyProfile} />}
+            {type === 'SPH' && <SphDocumentView sph={docData as SPH} showStamp={showStamp} companyProfile={companyProfile} customers={customers} />}
+            {type === 'PKS' && <PksDocumentView pks={docData as PKS} showStamp={showStamp} companyProfile={companyProfile} customers={customers} />}
+            {type === 'Invoice' && <InvoiceDocumentView invoice={docData as Invoice} showStamp={showStamp} companyProfile={companyProfile} customers={customers} />}
           </div>
         </div>
       </div>
@@ -411,15 +434,16 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
 };
 
 /* --- SPH VIEW --- */
-const SphDocumentView: React.FC<{ sph: SPH; showStamp: boolean; companyProfile?: CompanyProfile }> = ({
+const SphDocumentView: React.FC<{ sph: SPH; showStamp: boolean; companyProfile?: CompanyProfile; customers?: Customer[] }> = ({
   sph,
   showStamp,
   companyProfile,
+  customers,
 }) => {
   const profile = companyProfile || COMPANY_PROFILE;
   const signatureImage = sph.signedByLDI || profile.defaultSignatureBase64;
   return (
-    <div className="mt-6 space-y-6">
+    <div className="mt-3 print:mt-1 space-y-5">
       <div 
         className="flex justify-between items-start border-b border-slate-200 pb-4"
         style={{ borderBottom: '1px solid #cbd5e1' }}
@@ -446,7 +470,7 @@ const SphDocumentView: React.FC<{ sph: SPH; showStamp: boolean; companyProfile?:
         <p className="font-bold text-blue-900 text-sm">{sph.customerName}</p>
         <p className="text-slate-700">{sph.customerAddress}</p>
         <p className="text-slate-600">
-          Up: Bapak/Ibu Contact Person | Telp: {sph.customerPhone} | Email: {sph.customerEmail}
+          Up: Bapak/Ibu {getContactPersonName(sph.customerRepresentative, sph.customerId, sph.customerName, customers)} | Telp: {sph.customerPhone} | Email: {sph.customerEmail}
         </p>
       </div>
 
@@ -613,15 +637,16 @@ const SphDocumentView: React.FC<{ sph: SPH; showStamp: boolean; companyProfile?:
 };
 
 /* --- PKS VIEW --- */
-const PksDocumentView: React.FC<{ pks: PKS; showStamp: boolean; companyProfile?: CompanyProfile }> = ({
+const PksDocumentView: React.FC<{ pks: PKS; showStamp: boolean; companyProfile?: CompanyProfile; customers?: Customer[] }> = ({
   pks,
   showStamp,
   companyProfile,
+  customers,
 }) => {
   const profile = companyProfile || COMPANY_PROFILE;
   const party1Sig = pks.party1SignatureData || profile.defaultSignatureBase64;
   return (
-    <div className="mt-6 space-y-6">
+    <div className="mt-3 print:mt-1 space-y-5">
       <div 
         className="text-center space-y-1 border-b border-slate-200 pb-4"
         style={{ borderBottom: '1px solid #cbd5e1' }}
@@ -659,7 +684,7 @@ const PksDocumentView: React.FC<{ pks: PKS; showStamp: boolean; companyProfile?:
             Alamat: {pks.customerAddress}
           </p>
           <p className="text-slate-700">
-            Diwakili oleh <b>{pks.customerRepresentative}</b> selaku <b>{pks.customerRepPosition}</b>, bertindak untuk dan atas nama {pks.customerName}, selanjutnya disebut sebagai <b>PIHAK KEDUA</b>.
+            Diwakili oleh <b>{getContactPersonName(pks.customerRepresentative, pks.customerId, pks.customerName, customers)}</b> selaku <b>{pks.customerRepPosition || 'Pimpinan Perusahaan'}</b>, bertindak untuk dan atas nama {pks.customerName}, selanjutnya disebut sebagai <b>PIHAK KEDUA</b>.
           </p>
         </div>
       </div>
@@ -742,10 +767,11 @@ const PksDocumentView: React.FC<{ pks: PKS; showStamp: boolean; companyProfile?:
 };
 
 /* --- INVOICE VIEW --- */
-const InvoiceDocumentView: React.FC<{ invoice: Invoice; showStamp: boolean; companyProfile?: CompanyProfile }> = ({
+const InvoiceDocumentView: React.FC<{ invoice: Invoice; showStamp: boolean; companyProfile?: CompanyProfile; customers?: Customer[] }> = ({
   invoice,
   showStamp,
   companyProfile,
+  customers,
 }) => {
   const profile = companyProfile || COMPANY_PROFILE;
   const signatureImage = invoice.signatureData || profile.defaultSignatureBase64;
@@ -761,7 +787,7 @@ const InvoiceDocumentView: React.FC<{ invoice: Invoice; showStamp: boolean; comp
   const hasPartialPayment = invoice.status === 'Dibayar Sebagian' || (paidAmount > 0 && paidAmount < invoice.grandTotal);
 
   return (
-    <div className="mt-6 space-y-6">
+    <div className="mt-3 print:mt-1 space-y-5">
       <div 
         className="flex justify-between items-start border-b border-slate-200 pb-4"
         style={{ borderBottom: '1px solid #cbd5e1' }}
@@ -804,7 +830,7 @@ const InvoiceDocumentView: React.FC<{ invoice: Invoice; showStamp: boolean; comp
           <p className="font-bold text-blue-950 text-sm">{invoice.customerName}</p>
           <p className="text-slate-700 mt-0.5">{invoice.customerAddress}</p>
           <p className="text-slate-600 text-[11px] mt-1">
-            Telp: {invoice.customerPhone} | Email: {invoice.customerEmail}
+            Up: Bapak/Ibu {getContactPersonName(invoice.customerRepresentative, invoice.customerId, invoice.customerName, customers)} | Telp: {invoice.customerPhone} | Email: {invoice.customerEmail}
           </p>
         </div>
 

@@ -123,6 +123,7 @@ export interface Invoice {
   customerAddress: string;
   customerPhone: string;
   customerEmail: string;
+  customerRepresentative?: string;
   sphReference?: string;
   pksReference?: string;
   issueDate: string;

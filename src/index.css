@@ -124,50 +124,93 @@ html.dark body {
 @media print {
   @page {
     size: A4 portrait;
-    margin: 12mm 12mm 15mm 12mm;
+    margin: 10mm 10mm 10mm 10mm;
   }
 
   html, body {
     width: 100% !important;
     height: auto !important;
+    min-height: 0 !important;
     background: #ffffff !important;
     color: #0f172a !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     margin: 0 !important;
     padding: 0 !important;
+    overflow: visible !important;
   }
 
+  /* Hide everything on the page by default */
   body * {
     visibility: hidden !important;
   }
-  
+
+  /* Reset all modal containers, flex overlays, backdrops, and scroll wrappers during print */
+  .fixed,
+  .backdrop-blur-sm,
+  div[class*="fixed"],
+  div[class*="backdrop-blur"],
+  div[class*="z-50"],
+  div[class*="z-40"] {
+    position: static !important;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    top: 0 !important;
+    left: 0 !important;
+  }
+
+  .overflow-y-auto,
+  .overflow-x-auto,
+  .touch-scroll {
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  /* Make printable element and its children visible */
   #printable-document-content,
   #printable-document-content * {
     visibility: visible !important;
   }
-  
+
+  /* Force printable element to align to top-left of the paper without top margin or flex centering */
   #printable-document-content {
-    position: relative !important;
-    left: 0 !important;
+    position: absolute !important;
     top: 0 !important;
+    left: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
-    margin: 0 auto !important;
-    padding: 4mm 2mm 8mm 2mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
     border: none !important;
     box-shadow: none !important;
     background: #ffffff !important;
     color: #0f172a !important;
     box-sizing: border-box !important;
     overflow: visible !important;
+    min-height: auto !important;
   }
 
   /* Header & LDI Logo protection from cutoffs */
   #printable-document-content header,
   #printable-document-content .kop-surat-container,
   #printable-document-content [data-header] {
-    margin-bottom: 6mm !important;
+    margin-top: 0 !important;
+    margin-bottom: 4mm !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
@@ -183,7 +226,7 @@ html.dark body {
   #printable-document-content table {
     width: 100% !important;
     border-collapse: collapse !important;
-    margin-bottom: 6mm !important;
+    margin-bottom: 4mm !important;
     page-break-inside: auto;
   }
 
@@ -210,16 +253,9 @@ html.dark body {
   #printable-document-content footer,
   #printable-document-content .signature-section,
   #printable-document-content .document-footer {
-    margin-top: 8mm !important;
+    margin-top: 6mm !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
-  }
-
-  .fixed, .backdrop-blur-sm {
-    position: static !important;
-    background: transparent !important;
-    backdrop-filter: none !important;
-    overflow: visible !important;
   }
 }
 

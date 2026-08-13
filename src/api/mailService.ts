@@ -61,7 +61,13 @@ export async function sendEmail(options: MailOptions): Promise<MailServiceResult
       }),
     });
 
-    const responseData = await response.json();
+    const responseText = await response.text();
+    let responseData: any = {};
+    try {
+      responseData = JSON.parse(responseText);
+    } catch {
+      // Ignore text parse errors
+    }
 
     if (response.ok && responseData.success) {
       return {
@@ -70,9 +76,16 @@ export async function sendEmail(options: MailOptions): Promise<MailServiceResult
         data: responseData,
       };
     } else {
+      const errMsg =
+        responseData.message ||
+        responseData.error ||
+        (responseText.includes('<html')
+          ? 'Gagal terhubung ke server backend pengirim email. Silakan coba beberapa saat lagi.'
+          : responseText || 'Gagal mengirim email via Mailketing API.');
+
       return {
         success: false,
-        message: responseData.message || 'Gagal mengirim email via Mailketing API.',
+        message: errMsg,
         data: responseData,
       };
     }

@@ -43,19 +43,20 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
 
   const handleTestMailketingConnection = async () => {
     setTestEmailStatus({ loading: true });
+    const targetRecipient = profile.mailketingSenderEmail || profile.email || 'alwanemail@gmail.com';
     try {
       const res = await sendEmail({
-        recipient: profile.email || 'admin@ldi.co.id',
+        recipient: targetRecipient,
         subject: '[e-Office LDI] Uji Coba Koneksi Gateway Mailketing',
         content: `
           <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #38bdf8; border-radius: 12px; background-color: #f0f9ff; color: #0c4a6e;">
             <h3 style="margin-top: 0; color: #0369a1;">✅ Tes Koneksi Email Gateway Berhasil!</h3>
-            <p>Pesan ini mengonfirmasi bahwa API Key Mailketing yang terpasang di <strong>Pengaturan Perusahaan e-Office LDI</strong> aktif dan siap digunakan untuk pengiriman SPH, PKS, dan Invoice.</p>
+            <p>Pesan ini mengonfirmasi bahwa API Key Mailketing (<code>${(profile.mailketingApiKey || '').slice(0, 8)}...</code>) yang terpasang di <strong>Pengaturan Perusahaan e-Office LDI</strong> aktif dan siap digunakan untuk pengiriman SPH, PKS, dan Invoice.</p>
             <p style="font-size: 11px; color: #64748b; margin-bottom: 0;">Dikirim pada: ${new Date().toLocaleString('id-ID')}</p>
           </div>
         `,
         senderName: profile.name || 'PT. LINTAS DATA INTERNASIONAL',
-        senderEmail: profile.mailketingSenderEmail || profile.email || 'admin@ldi.co.id',
+        senderEmail: profile.mailketingSenderEmail || profile.email || 'alwanemail@gmail.com',
         mailketingApiKey: profile.mailketingApiKey,
       });
 
@@ -63,7 +64,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
         setTestEmailStatus({
           loading: false,
           success: true,
-          message: `✅ Berhasil! Email tes terkirim ke ${profile.email || 'admin@ldi.co.id'} via Mailketing API.`
+          message: `✅ Berhasil! Email tes terkirim ke ${targetRecipient} via Mailketing API.`
         });
       } else {
         setTestEmailStatus({

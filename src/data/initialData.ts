@@ -32,8 +32,8 @@ export const COMPANY_PROFILE: CompanyProfile = {
   directorName: 'Irwan Setiawan, S.T.',
   directorPosition: 'Direktur Utama',
   financeManager: 'Siti Rahmawati, S.E.',
-  mailketingApiKey: '5aafffa0c30e5a87235b66f6e1c0e440',
-  mailketingSenderEmail: 'admin@ldi.co.id',
+  mailketingApiKey: 'e6f901cb964cd1c0fb59453f3450329d',
+  mailketingSenderEmail: 'alwanemail@gmail.com',
   emailTemplates: {
     defaultCc: 'finance@ldi.co.id, sales@ldi.co.id',
     sphSubject: '[PT. LDI] Dokumen Penawaran Harga (SPH) {DOC_NUMBER} - {CUSTOMER_NAME}',

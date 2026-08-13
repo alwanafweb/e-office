@@ -174,7 +174,7 @@ export const SphView: React.FC<SphViewProps> = ({
         id: `ITM-${Date.now()}`,
         category: 'Internet Dedicated',
         name: 'Layanan Baru',
-        description: 'Spesifikasi detail layanan',
+        description: 'Detail spesifikasi layanan',
         qty: 1,
         unit: 'Unit',
         price: 1000000,
@@ -189,7 +189,17 @@ export const SphView: React.FC<SphViewProps> = ({
 
   const handleItemChange = (index: number, field: keyof ItemService, value: any) => {
     const updated = [...items];
-    updated[index] = { ...updated[index], [field]: value };
+    if (field === 'category') {
+      let defaultDesc = 'Detail spesifikasi layanan';
+      if (value === 'Cloud Server') defaultDesc = 'Layanan Cloud Virtual Server High Performance SLA 99.9%';
+      else if (value === 'Colocation Server') defaultDesc = 'Layanan Colocation Server Rack Unit Datacenter Tier-3';
+      else if (value === 'Datacenter Managed') defaultDesc = 'Layanan Managed Services & Technical Support Datacenter 24/7';
+      else if (value === 'Internet Dedicated') defaultDesc = 'Akses Internet Dedicated Symmetrical Speed High Performance SLA 99.9%';
+      
+      updated[index] = { ...updated[index], category: value, description: defaultDesc };
+    } else {
+      updated[index] = { ...updated[index], [field]: value };
+    }
     setItems(updated);
   };
 
@@ -536,78 +546,91 @@ export const SphView: React.FC<SphViewProps> = ({
                   {items.map((item, idx) => (
                     <div
                       key={item.id}
-                      className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center"
+                      className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2"
                     >
-                      <div className="sm:col-span-3">
-                        <label className="text-[10px] text-slate-500 font-bold block">Kategori</label>
-                        <select
-                          value={item.category}
-                          onChange={(e) =>
-                            handleItemChange(idx, 'category', e.target.value as ServiceCategory)
-                          }
-                          className="w-full p-1.5 border border-slate-300 rounded bg-white text-[11px] font-semibold"
-                        >
-                          <option value="Internet Dedicated">Internet Dedicated</option>
-                          <option value="Cloud Server">Cloud Server</option>
-                          <option value="Colocation Server">Colocation Server</option>
-                          <option value="Datacenter Managed">Datacenter Managed</option>
-                        </select>
-                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                        <div className="sm:col-span-3">
+                          <label className="text-[10px] text-slate-500 font-bold block">Kategori</label>
+                          <select
+                            value={item.category}
+                            onChange={(e) =>
+                              handleItemChange(idx, 'category', e.target.value as ServiceCategory)
+                            }
+                            className="w-full p-1.5 border border-slate-300 rounded bg-white text-[11px] font-semibold"
+                          >
+                            <option value="Internet Dedicated">Internet Dedicated</option>
+                            <option value="Cloud Server">Cloud Server</option>
+                            <option value="Colocation Server">Colocation Server</option>
+                            <option value="Datacenter Managed">Datacenter Managed</option>
+                          </select>
+                        </div>
 
-                      <div className="sm:col-span-3">
-                        <label className="text-[10px] text-slate-500 font-bold block">Nama Layanan</label>
-                        <input
-                          type="text"
-                          value={item.name}
-                          onChange={(e) => handleItemChange(idx, 'name', e.target.value)}
-                          className="w-full p-1.5 border border-slate-300 rounded bg-white font-bold"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <label className="text-[10px] text-slate-500 font-bold block">Vol & Satuan</label>
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            value={item.qty}
-                            onChange={(e) => handleItemChange(idx, 'qty', Number(e.target.value))}
-                            className="w-14 p-1.5 border border-slate-300 rounded bg-white font-mono text-center font-bold"
-                          />
+                        <div className="sm:col-span-3">
+                          <label className="text-[10px] text-slate-500 font-bold block">Nama Layanan</label>
                           <input
                             type="text"
-                            value={item.unit}
-                            onChange={(e) => handleItemChange(idx, 'unit', e.target.value)}
-                            className="w-16 p-1.5 border border-slate-300 rounded bg-white text-[10px]"
+                            value={item.name}
+                            onChange={(e) => handleItemChange(idx, 'name', e.target.value)}
+                            className="w-full p-1.5 border border-slate-300 rounded bg-white font-bold"
                           />
                         </div>
-                      </div>
 
-                      <div className="sm:col-span-2">
-                        <label className="text-[10px] text-slate-500 font-bold block">Harga Satuan (IDR)</label>
-                        <input
-                          type="number"
-                          value={item.price}
-                          onChange={(e) => handleItemChange(idx, 'price', Number(e.target.value))}
-                          className="w-full p-1.5 border border-slate-300 rounded bg-white font-mono font-bold text-right"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2 flex items-center justify-between gap-1">
-                        <div className="text-right w-full">
-                          <label className="text-[10px] text-slate-500 font-bold block">Subtotal</label>
-                          <span className="font-mono font-bold text-blue-900 block pt-1">
-                            {formatIDR(item.qty * item.price)}
-                          </span>
+                        <div className="sm:col-span-2">
+                          <label className="text-[10px] text-slate-500 font-bold block">Vol & Satuan</label>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              value={item.qty}
+                              onChange={(e) => handleItemChange(idx, 'qty', Number(e.target.value))}
+                              className="w-14 p-1.5 border border-slate-300 rounded bg-white font-mono text-center font-bold"
+                            />
+                            <input
+                              type="text"
+                              value={item.unit}
+                              onChange={(e) => handleItemChange(idx, 'unit', e.target.value)}
+                              className="w-16 p-1.5 border border-slate-300 rounded bg-white text-[10px]"
+                            />
+                          </div>
                         </div>
-                        {items.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItem(idx)}
-                            className="text-rose-500 hover:text-rose-700 p-1"
-                          >
-                            <MinusCircle className="w-4 h-4" />
-                          </button>
-                        )}
+
+                        <div className="sm:col-span-2">
+                          <label className="text-[10px] text-slate-500 font-bold block">Harga Satuan (IDR)</label>
+                          <input
+                            type="number"
+                            value={item.price}
+                            onChange={(e) => handleItemChange(idx, 'price', Number(e.target.value))}
+                            className="w-full p-1.5 border border-slate-300 rounded bg-white font-mono font-bold text-right"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2 flex items-center justify-between gap-1">
+                          <div className="text-right w-full">
+                            <label className="text-[10px] text-slate-500 font-bold block">Subtotal</label>
+                            <span className="font-mono font-bold text-blue-900 block pt-1">
+                              {formatIDR(item.qty * item.price)}
+                            </span>
+                          </div>
+                          {items.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(idx)}
+                              className="text-rose-500 hover:text-rose-700 p-1"
+                            >
+                              <MinusCircle className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-bold block">Deskripsi Detail Layanan (Muncul di PDF/Tabel)</label>
+                        <input
+                          type="text"
+                          value={item.description || ''}
+                          onChange={(e) => handleItemChange(idx, 'description', e.target.value)}
+                          className="w-full p-1.5 border border-slate-300 rounded bg-white text-xs text-slate-700"
+                          placeholder="Keterangan rincian spesifikasi layanan..."
+                        />
                       </div>
                     </div>
                   ))}

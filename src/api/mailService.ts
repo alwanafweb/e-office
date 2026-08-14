@@ -51,21 +51,51 @@ async function sendDirectMailketing(options: MailOptions): Promise<MailServiceRe
     senderName = 'PT. LINTAS DATA INTERNASIONAL',
     senderEmail = 'alwanemail@gmail.com',
     attachmentUrl,
+    pdfBase64,
+    pdfFilename,
+    attachments,
     mailketingApiKey,
   } = options;
 
   const apiKey = (mailketingApiKey && mailketingApiKey.trim()) || getMailketingApiKey();
 
-  // Mailketing API v1 MUST use application/x-www-form-urlencoded
-  const formParams = new URLSearchParams();
-  formParams.set('api_token', apiKey);
-  formParams.set('from_name', senderName);
-  formParams.set('from_email', senderEmail);
-  formParams.set('recipient', recipient.trim());
-  formParams.set('subject', subject);
-  formParams.set('content', content);
-  if (attachmentUrl && attachmentUrl.trim()) {
-    formParams.set('attach1', attachmentUrl.trim());
+  const formData = new FormData();
+  formData.append('api_token', apiKey);
+  formData.append('from_name', senderName);
+  formData.append('from_email', senderEmail);
+  formData.append('recipient', recipient.trim());
+  formData.append('subject', subject);
+  formData.append('content', content);
+
+  let rawB64 = pdfBase64;
+  let filename = pdfFilename || 'Dokumen_Resmi_LDI.pdf';
+
+  if (!rawB64 && attachments && attachments.length > 0 && attachments[0].content) {
+    rawB64 = attachments[0].content;
+    filename = attachments[0].filename || filename;
+  }
+
+  if (rawB64) {
+    try {
+      let cleanB64 = rawB64;
+      if (cleanB64.includes(',')) {
+        cleanB64 = cleanB64.substring(cleanB64.indexOf(',') + 1);
+      }
+      const binaryString = atob(cleanB64.trim());
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      formData.append('attach1', blob, filename);
+    } catch (b64Err) {
+      console.warn('Could not convert base64 to blob for direct dispatch:', b64Err);
+      if (attachmentUrl && attachmentUrl.trim()) {
+        formData.append('attach1', attachmentUrl.trim());
+      }
+    }
+  } else if (attachmentUrl && attachmentUrl.trim()) {
+    formData.append('attach1', attachmentUrl.trim());
   }
 
   console.group(`[MAILKETING CLIENT] Email Dispatch -> ${recipient}`);
@@ -73,16 +103,12 @@ async function sendDirectMailketing(options: MailOptions): Promise<MailServiceRe
   console.log('Target Endpoint:', MAILKETING_API_URL);
   console.log('Sender:', `"${senderName}" <${senderEmail}>`);
   console.log('Subject:', subject);
-  console.log('Payload Type:', 'application/x-www-form-urlencoded');
+  console.log('Payload Type:', 'multipart/form-data');
 
   try {
     const response = await fetch(MAILKETING_API_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json',
-      },
-      body: formParams.toString(),
+      body: formData,
     });
 
     const responseStatus = response.status;
@@ -146,13 +172,13 @@ async function sendDirectMailketing(options: MailOptions): Promise<MailServiceRe
       for (const ccAddr of ccAddresses) {
         try {
           await new Promise((r) => setTimeout(r, 600));
-          const ccParams = new URLSearchParams();
-          ccParams.set('api_token', apiKey);
-          ccParams.set('from_name', senderName);
-          ccParams.set('from_email', senderEmail);
-          ccParams.set('recipient', ccAddr);
-          ccParams.set('subject', `[CC] ${subject}`);
-          ccParams.set(
+          const ccFormData = new FormData();
+          ccFormData.append('api_token', apiKey);
+          ccFormData.append('from_name', senderName);
+          ccFormData.append('from_email', senderEmail);
+          ccFormData.append('recipient', ccAddr);
+          ccFormData.append('subject', `[CC] ${subject}`);
+          ccFormData.append(
             'content',
             `
               <div style="background-color: #fefce8; border: 1px solid #fef08a; padding: 12px 18px; border-radius: 10px; margin-bottom: 20px; font-family: Arial, sans-serif; font-size: 13px; color: #854d0e;">
@@ -161,17 +187,32 @@ async function sendDirectMailketing(options: MailOptions): Promise<MailServiceRe
               ${content}
             `
           );
-          if (attachmentUrl && attachmentUrl.trim()) {
-            ccParams.set('attach1', attachmentUrl.trim());
+
+          if (rawB64) {
+            try {
+              let cleanB64 = rawB64;
+              if (cleanB64.includes(',')) {
+                cleanB64 = cleanB64.substring(cleanB64.indexOf(',') + 1);
+              }
+              const binaryString = atob(cleanB64.trim());
+              const bytes = new Uint8Array(binaryString.length);
+              for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+              }
+              const blob = new Blob([bytes], { type: 'application/pdf' });
+              ccFormData.append('attach1', blob, filename);
+            } catch {
+              if (attachmentUrl && attachmentUrl.trim()) {
+                ccFormData.append('attach1', attachmentUrl.trim());
+              }
+            }
+          } else if (attachmentUrl && attachmentUrl.trim()) {
+            ccFormData.append('attach1', attachmentUrl.trim());
           }
 
           await fetch(MAILKETING_API_URL, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'Accept': 'application/json',
-            },
-            body: ccParams.toString(),
+            body: ccFormData,
           });
         } catch (ccErr) {
           console.warn('CC fallback error for', ccAddr, ccErr);

@@ -15,6 +15,48 @@ export const getOfficialDomain = (customWebsite?: string): string => {
   return clean;
 };
 
+export interface PDFGenerationOptions {
+  headerMode?: 'official' | 'clean';
+  showStamp?: boolean;
+  showSignatures?: boolean;
+  className?: string;
+}
+
+export interface PDFBase64Result {
+  base64: string;      // Pure RFC-4648 Base64 string without data URI scheme, optimal for email API attachments array
+  dataUri: string;     // Full data URI string (data:application/pdf;base64,...)
+  filename: string;    // Document filename ending in .pdf
+  contentType: string; // 'application/pdf'
+  byteLength: number;
+}
+
+/**
+ * Converts a jsPDF document instance into a standard RFC-4648 Base64 result.
+ */
+export const convertPdfToBase64Result = (
+  pdf: jsPDF,
+  filename: string
+): PDFBase64Result => {
+  const cleanFilename = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
+  const arrayBuffer = pdf.output('arraybuffer');
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const rawBase64 = btoa(binary);
+  const dataUri = `data:application/pdf;base64,${rawBase64}`;
+
+  return {
+    base64: rawBase64,
+    dataUri,
+    filename: cleanFilename,
+    contentType: 'application/pdf',
+    byteLength: len,
+  };
+};
+
 /**
  * High-fidelity offscreen renderer for PDFTemplate.
  * Guarantees 100% visual parity between preview, direct downloads, and email attachments.
@@ -24,9 +66,29 @@ export const renderTemplateToPdf = async (
   data: SPH | PKS | Invoice,
   companyProfile?: CompanyProfile,
   customers?: Customer[],
-  headerMode: 'official' | 'clean' = 'official'
+  options?: 'official' | 'clean' | PDFGenerationOptions
 ): Promise<jsPDF | null> => {
   if (typeof document === 'undefined') return null;
+
+  const headerMode: 'official' | 'clean' =
+    typeof options === 'string'
+      ? options
+      : options?.headerMode || 'official';
+
+  const showStamp =
+    typeof options === 'object' && options?.showStamp !== undefined
+      ? options.showStamp
+      : true;
+
+  const showSignatures =
+    typeof options === 'object' && options?.showSignatures !== undefined
+      ? options.showSignatures
+      : true;
+
+  const customClassName =
+    typeof options === 'object' && options?.className
+      ? options.className
+      : '!shadow-none !border-none !rounded-none !p-8 !m-0 !w-[794px] !max-w-[794px]';
 
   // Create temporary container off-screen with exact A4 dimensions
   const container = document.createElement('div');
@@ -55,13 +117,13 @@ export const renderTemplateToPdf = async (
       companyProfile: companyProfile || COMPANY_PROFILE,
       customers,
       headerMode,
-      showStamp: true,
-      showSignatures: true,
-      className: '!shadow-none !border-none !rounded-none !p-8 !m-0 !w-[794px] !max-w-[794px]',
+      showStamp,
+      showSignatures,
+      className: customClassName,
     })
   );
 
-  // Wait for React to render DOM and initialize QR Codes
+  // Wait for React to render DOM, fonts, and initialize QR Codes
   await new Promise((resolve) => setTimeout(resolve, 450));
 
   // Wait for all images inside container to finish loading
@@ -76,7 +138,7 @@ export const renderTemplateToPdf = async (
     })
   );
 
-  // Additional settlement time for canvas/fonts
+  // Additional settlement time for canvas/fonts/SVGs
   await new Promise((resolve) => setTimeout(resolve, 200));
 
   try {
@@ -142,6 +204,8 @@ export const exportToPdf = async (
     companyProfile?: CompanyProfile;
     customers?: Customer[];
     headerMode?: 'official' | 'clean';
+    showStamp?: boolean;
+    showSignatures?: boolean;
   }
 ): Promise<boolean> => {
   const element = document.getElementById(elementId);
@@ -203,7 +267,11 @@ export const exportToPdf = async (
         docFallback.data,
         docFallback.companyProfile,
         docFallback.customers,
-        docFallback.headerMode || 'official'
+        {
+          headerMode: docFallback.headerMode || 'official',
+          showStamp: docFallback.showStamp ?? true,
+          showSignatures: docFallback.showSignatures ?? true,
+        }
       );
       if (pdf) {
         pdf.save(cleanFilename);
@@ -219,12 +287,12 @@ export const exportToPdf = async (
 };
 
 /**
- * Generates base64 data URI of a document element.
+ * Generates base64 data result of a document element.
  */
 export const generatePdfBase64 = async (
   elementId: string,
   filename: string
-): Promise<{ base64: string; filename: string } | null> => {
+): Promise<PDFBase64Result | null> => {
   const element = document.getElementById(elementId);
   if (!element) {
     return null;
@@ -270,12 +338,7 @@ export const generatePdfBase64 = async (
       heightLeft -= pageHeight;
     }
 
-    const dataUrl = pdf.output('datauristring');
-    const cleanFilename = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
-    return {
-      base64: dataUrl,
-      filename: cleanFilename,
-    };
+    return convertPdfToBase64Result(pdf, filename);
   } catch (err) {
     console.error('Error generating PDF Base64 from element:', err);
     return null;
@@ -284,15 +347,15 @@ export const generatePdfBase64 = async (
 
 /**
  * Generates 100% pixel-perfect standalone PDF Base64 for Email Attachment & Gateway Upload.
- * Uses the exact same PDFTemplate component and rendering pipeline as the on-screen preview and download.
+ * Uses the exact same PDFTemplate component and configuration as the on-screen preview and download.
  */
 export const generateStandaloneDocPdfBase64 = async (
   type: 'SPH' | 'PKS' | 'Invoice',
   data: SPH | PKS | Invoice,
   companyProfile?: CompanyProfile,
   customers?: Customer[],
-  headerMode: 'official' | 'clean' = 'official'
-): Promise<{ base64: string; filename: string } | null> => {
+  options?: 'official' | 'clean' | PDFGenerationOptions
+): Promise<PDFBase64Result | null> => {
   const docNumber =
     type === 'SPH'
       ? (data as SPH).sphNumber
@@ -303,13 +366,13 @@ export const generateStandaloneDocPdfBase64 = async (
   const cleanDocNumber = (docNumber || `${type}_${Date.now()}`).replace(/[\/\\]/g, '_');
   const filename = `${type}_${cleanDocNumber}.pdf`;
 
-  // Use the high-fidelity offscreen renderer with exact PDFTemplate
+  // Use the high-fidelity offscreen renderer with exact PDFTemplate configuration
   const pdf = await renderTemplateToPdf(
     type,
     data,
     companyProfile,
     customers,
-    headerMode
+    options
   );
 
   if (!pdf) {
@@ -317,9 +380,6 @@ export const generateStandaloneDocPdfBase64 = async (
     return null;
   }
 
-  const dataUrl = pdf.output('datauristring');
-  return {
-    base64: dataUrl,
-    filename,
-  };
+  return convertPdfToBase64Result(pdf, filename);
 };
+

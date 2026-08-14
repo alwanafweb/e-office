@@ -15,6 +15,8 @@ interface SendDocEmailModalProps {
   companyProfile?: CompanyProfile;
   customers?: Customer[];
   headerMode?: 'official' | 'clean';
+  showStamp?: boolean;
+  showSignatures?: boolean;
   onClose: () => void;
   onSuccessSend?: (docType: 'SPH' | 'PKS' | 'Invoice', docId: string, recipientEmail: string) => void;
 }
@@ -26,6 +28,8 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
   companyProfile,
   customers,
   headerMode = 'official',
+  showStamp = true,
+  showSignatures = true,
   onClose,
   onSuccessSend,
 }) => {
@@ -129,14 +133,26 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
     setIsSending(true);
 
     try {
-      // Step 1: Render 100% exact high-fidelity PDF Buffer
+      // Step 1: Render 100% exact high-fidelity PDF Buffer with identical PDFTemplate configuration as web preview
       setSendStep('1/3 Merender Dokumen PDF Resmi & Tanda Tangan Digital...');
       
       const fileName = `${type}_${docNumber.replace(/[\/\\]/g, '_')}.pdf`;
       let attachedPdfUrl: string | undefined = undefined;
 
-      // Use the high-fidelity unified PDFTemplate generator to guarantee 100% parity
-      let pdfResult = await generateStandaloneDocPdfBase64(type, data, companyProfile, customers, headerMode);
+      // Use the high-fidelity unified PDFTemplate generator with identical configuration (headerMode, showStamp, showSignatures)
+      let pdfResult = await generateStandaloneDocPdfBase64(
+        type,
+        data,
+        companyProfile,
+        customers,
+        {
+          headerMode,
+          showStamp,
+          showSignatures,
+        }
+      );
+
+      // Graceful fallback to on-screen DOM element capture if offscreen rendering needed
       if (!pdfResult || !pdfResult.base64) {
         console.info('Fallback to on-screen element capture for document attachment...');
         pdfResult = await generatePdfBase64('printable-document-content', fileName);
@@ -174,23 +190,26 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
         fileName,
       });
 
+      // Prepare standard attachments array for Email API
+      const attachmentsPayload = pdfResult?.base64
+        ? [
+            {
+              filename: fileName,
+              content: pdfResult.base64, // Pure RFC 4648 Base64 string
+              contentType: 'application/pdf',
+            },
+          ]
+        : undefined;
+
       const mailRes = await sendEmail({
         recipient: recipientEmail,
         cc: ccEmail,
         subject,
         content: formattedContent,
         senderName: companyProfile?.name || 'PT. LINTAS DATA INTERNASIONAL',
-        senderEmail: companyProfile?.mailketingSenderEmail || companyProfile?.email || 'admin@ldi.co.id',
+        senderEmail: companyProfile?.mailketingSenderEmail || companyProfile?.email || 'alwanemail@gmail.com',
         attachmentUrl: attachedPdfUrl,
-        attachments: pdfResult?.base64
-          ? [
-              {
-                filename: fileName,
-                content: pdfResult.base64,
-                contentType: 'application/pdf',
-              },
-            ]
-          : undefined,
+        attachments: attachmentsPayload,
         pdfBase64: pdfResult?.base64,
         pdfFilename: fileName,
         mailketingApiKey: companyProfile?.mailketingApiKey,

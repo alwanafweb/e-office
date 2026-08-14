@@ -391,6 +391,8 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
         companyProfile={companyProfile}
         customers={customers}
         headerMode={headerMode}
+        showStamp={showStamp}
+        showSignatures={true}
         onClose={() => setIsSendEmailOpen(false)}
         onSuccessSend={(docType, docId) => {
           if (onUpdateStatusToSent) {

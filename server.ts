@@ -682,29 +682,32 @@ async function startServer() {
         finalContent = `${finalContent}\n${attachmentCallout}`;
       }
 
-      // Send via Mailketing API: Use application/x-www-form-urlencoded with direct attach1 URL
-      console.log(`[MAILKETING LOG ${timestamp}] [API REQUEST] Sending via application/x-www-form-urlencoded to Mailketing API`);
+      // Send via Mailketing API: Use multipart/form-data with binary Blob attachment (or URL fallback)
+      console.log(`[MAILKETING LOG ${timestamp}] [API REQUEST] Sending via multipart/form-data to Mailketing API`);
       console.log(` - Recipient : ${recipient.trim()}`);
-      console.log(` - Attach1   : ${finalAttachUrl || '(none)'}`);
+      console.log(` - Binary PDF: ${localPdfBuffer ? `YES (${localPdfBuffer.length} bytes, file: ${localPdfFilename})` : 'NO'}`);
+      console.log(` - Attach1 URL: ${finalAttachUrl || '(none)'}`);
 
-      const formParams = new URLSearchParams();
-      formParams.set('api_token', activeApiKey);
-      formParams.set('from_name', activeSenderName);
-      formParams.set('from_email', activeSenderEmail);
-      formParams.set('recipient', recipient.trim());
-      formParams.set('subject', subject);
-      formParams.set('content', finalContent);
-      if (finalAttachUrl && finalAttachUrl.trim()) {
-        formParams.set('attach1', finalAttachUrl.trim());
+      const formData = new FormData();
+      formData.append('api_token', activeApiKey);
+      formData.append('from_name', activeSenderName);
+      formData.append('from_email', activeSenderEmail);
+      formData.append('recipient', recipient.trim());
+      formData.append('subject', subject);
+      formData.append('content', finalContent);
+
+      if (localPdfBuffer && localPdfBuffer.length > 0) {
+        const pdfBlob = new Blob([localPdfBuffer], { type: 'application/pdf' });
+        formData.append('attach1', pdfBlob, localPdfFilename);
+        console.log(`[MAILKETING LOG ${timestamp}] Appended binary PDF blob to 'attach1' parameter (${localPdfFilename})`);
+      } else if (finalAttachUrl && finalAttachUrl.trim()) {
+        formData.append('attach1', finalAttachUrl.trim());
+        console.log(`[MAILKETING LOG ${timestamp}] Appended URL string to 'attach1' parameter (${finalAttachUrl})`);
       }
 
       const response = await fetch('https://api.mailketing.co.id/api/v1/send', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json',
-        },
-        body: formParams.toString(),
+        body: formData,
       });
 
       const responseStatusCode = response.status;
@@ -798,25 +801,24 @@ async function startServer() {
               ${finalContent}
             `;
 
-            const ccFormParams = new URLSearchParams();
-            ccFormParams.set('api_token', activeApiKey);
-            ccFormParams.set('from_name', activeSenderName);
-            ccFormParams.set('from_email', activeSenderEmail);
-            ccFormParams.set('recipient', ccAddr);
-            ccFormParams.set('subject', ccSubject);
-            ccFormParams.set('content', ccNotice);
-            if (finalAttachUrl && finalAttachUrl.trim()) {
-              ccFormParams.set('attach1', finalAttachUrl.trim());
+            const ccFormData = new FormData();
+            ccFormData.append('api_token', activeApiKey);
+            ccFormData.append('from_name', activeSenderName);
+            ccFormData.append('from_email', activeSenderEmail);
+            ccFormData.append('recipient', ccAddr);
+            ccFormData.append('subject', ccSubject);
+            ccFormData.append('content', ccNotice);
+            if (localPdfBuffer && localPdfBuffer.length > 0) {
+              const ccPdfBlob = new Blob([localPdfBuffer], { type: 'application/pdf' });
+              ccFormData.append('attach1', ccPdfBlob, localPdfFilename);
+            } else if (finalAttachUrl && finalAttachUrl.trim()) {
+              ccFormData.append('attach1', finalAttachUrl.trim());
             }
 
-            console.log(`[MAILKETING LOG ${timestamp}] [CC DISPATCH URL-ENCODED] Dispatching copy to: ${ccAddr} with attach1: ${finalAttachUrl || '(none)'}`);
+            console.log(`[MAILKETING LOG ${timestamp}] [CC DISPATCH MULTIPART] Dispatching copy to: ${ccAddr} with attach1: ${localPdfFilename || finalAttachUrl || '(none)'}`);
             const ccRes = await fetch('https://api.mailketing.co.id/api/v1/send', {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Accept': 'application/json',
-              },
-              body: ccFormParams.toString(),
+              body: ccFormData,
             });
             const ccText = await ccRes.text();
             console.log(`[MAILKETING LOG ${timestamp}] [CC DISPATCH SUCCESS] Result for ${ccAddr}: ${ccText.substring(0, 150)}`);

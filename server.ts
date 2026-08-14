@@ -448,56 +448,112 @@ async function startServer() {
   // Helper to obtain a 100% public, directly accessible PDF URL for Mailketing API
   async function getPublicDirectPdfUrl(buffer: Buffer, filename: string, fallbackUrl?: string): Promise<string> {
     const cleanFilename = (filename || 'Dokumen_Resmi_LDI.pdf').replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+    const safeFilename = cleanFilename.toLowerCase().endsWith('.pdf') ? cleanFilename : `${cleanFilename}.pdf`;
     
-    // Strategy 1: Upload to tmpfiles.org to get a direct public CDN download link (accessible by Mailketing servers)
-    try {
+    // Strategy 1: Catbox.moe (Direct permanent file hosting with Content-Type application/pdf)
+    const uploadCatbox = async (): Promise<string> => {
       const formData = new FormData();
+      formData.append('reqtype', 'fileupload');
       const blob = new Blob([buffer], { type: 'application/pdf' });
-      formData.append('file', blob, cleanFilename);
+      formData.append('fileToUpload', blob, safeFilename);
 
-      const uploadRes = await fetch('https://tmpfiles.org/api/v1/upload', {
+      const res = await fetch('https://catbox.moe/user/api.php', {
         method: 'POST',
         body: formData,
         signal: AbortSignal.timeout(6000),
       });
 
-      if (uploadRes.ok) {
-        const data: any = await uploadRes.json();
-        if (data?.data?.url) {
-          // Convert https://tmpfiles.org/12345/filename.pdf to direct download https://tmpfiles.org/dl/12345/filename.pdf
-          const directUrl = data.data.url.replace('tmpfiles.org/', 'tmpfiles.org/dl/');
-          console.log(`[PUBLIC PDF CDN] Successfully generated direct PDF URL: ${directUrl}`);
+      if (res.ok) {
+        const directUrl = (await res.text()).trim();
+        if (directUrl.startsWith('http') && (directUrl.endsWith('.pdf') || directUrl.includes('catbox'))) {
+          console.log(`[PUBLIC PDF CDN] Catbox upload success: ${directUrl}`);
           return directUrl;
         }
       }
-    } catch (err: any) {
-      console.warn('[PUBLIC PDF CDN] tmpfiles.org upload notice:', err.message);
-    }
+      throw new Error('Catbox upload response invalid');
+    };
 
-    // Strategy 2: Upload to file.io as fallback
-    try {
+    // Strategy 2: Uguu.se (Fast direct temporary CDN)
+    const uploadUguu = async (): Promise<string> => {
       const formData = new FormData();
       const blob = new Blob([buffer], { type: 'application/pdf' });
-      formData.append('file', blob, cleanFilename);
+      formData.append('files[]', blob, safeFilename);
 
-      const fileIoRes = await fetch('https://file.io/?expires=14d', {
+      const res = await fetch('https://uguu.se/upload?output=json', {
         method: 'POST',
         body: formData,
         signal: AbortSignal.timeout(6000),
       });
 
-      if (fileIoRes.ok) {
-        const data: any = await fileIoRes.json();
-        if (data?.link) {
-          console.log(`[PUBLIC PDF CDN] Successfully generated file.io PDF URL: ${data.link}`);
-          return data.link;
+      if (res.ok) {
+        const data: any = await res.json();
+        if (data?.files?.[0]?.url) {
+          const directUrl = String(data.files[0].url);
+          console.log(`[PUBLIC PDF CDN] Uguu upload success: ${directUrl}`);
+          return directUrl;
         }
       }
-    } catch (err: any) {
-      console.warn('[PUBLIC PDF CDN] file.io upload notice:', err.message);
+      throw new Error('Uguu upload response invalid');
+    };
+
+    // Strategy 3: tmpfiles.org direct download link
+    const uploadTmpFiles = async (): Promise<string> => {
+      const formData = new FormData();
+      const blob = new Blob([buffer], { type: 'application/pdf' });
+      formData.append('file', blob, safeFilename);
+
+      const res = await fetch('https://tmpfiles.org/api/v1/upload', {
+        method: 'POST',
+        body: formData,
+        signal: AbortSignal.timeout(6000),
+      });
+
+      if (res.ok) {
+        const data: any = await res.json();
+        if (data?.data?.url) {
+          const directUrl = data.data.url.replace('tmpfiles.org/', 'tmpfiles.org/dl/');
+          console.log(`[PUBLIC PDF CDN] tmpfiles upload success: ${directUrl}`);
+          return directUrl;
+        }
+      }
+      throw new Error('tmpfiles upload response invalid');
+    };
+
+    // Strategy 4: 0x0.st
+    const upload0x0 = async (): Promise<string> => {
+      const formData = new FormData();
+      const blob = new Blob([buffer], { type: 'application/pdf' });
+      formData.append('file', blob, safeFilename);
+
+      const res = await fetch('https://0x0.st', {
+        method: 'POST',
+        body: formData,
+        signal: AbortSignal.timeout(6000),
+      });
+
+      if (res.ok) {
+        const directUrl = (await res.text()).trim();
+        if (directUrl.startsWith('http')) {
+          console.log(`[PUBLIC PDF CDN] 0x0.st upload success: ${directUrl}`);
+          return directUrl;
+        }
+      }
+      throw new Error('0x0.st upload response invalid');
+    };
+
+    try {
+      const fastestUrl = await Promise.any([
+        uploadCatbox(),
+        uploadUguu(),
+        uploadTmpFiles(),
+        upload0x0(),
+      ]);
+      return fastestUrl;
+    } catch (allErr: any) {
+      console.warn('[PUBLIC PDF CDN] Parallel upload failure, checking fallback:', allErr?.message || allErr);
     }
 
-    // Strategy 3: Fallback to existing fallbackUrl (if available)
+    // Fallback: Use existing fallbackUrl if provided
     if (fallbackUrl && fallbackUrl.startsWith('http')) {
       return fallbackUrl;
     }

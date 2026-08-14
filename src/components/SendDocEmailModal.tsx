@@ -40,13 +40,16 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
 
   const customerName = data.customerName;
 
-  // Derive initial recipient email
+  // Derive initial recipient email accurately from data or customers catalog
+  const customerObj = customers?.find(
+    (c) => (data.customerId && c.id === data.customerId) || c.companyName === customerName
+  );
+
   const initialEmail =
-    type === 'SPH'
-      ? (data as SPH).customerEmail
-      : type === 'Invoice'
-      ? (data as Invoice).customerEmail
-      : 'contact@' + customerName.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com';
+    (type === 'SPH' ? (data as SPH).customerEmail : undefined) ||
+    (type === 'Invoice' ? (data as Invoice).customerEmail : undefined) ||
+    customerObj?.email ||
+    '';
 
   const templates = companyProfile?.emailTemplates;
 
@@ -74,6 +77,13 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
   const [ccEmail, setCcEmail] = useState(initialCc);
   const [subject, setSubject] = useState(defaultSubject);
   const [messageBody, setMessageBody] = useState(defaultBody);
+
+  // Synchronize initial email and message body when data changes
+  React.useEffect(() => {
+    if (initialEmail && !recipientEmail) {
+      setRecipientEmail(initialEmail);
+    }
+  }, [initialEmail]);
 
   // Sending Process States
   const [isSending, setIsSending] = useState(false);

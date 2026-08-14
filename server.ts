@@ -330,7 +330,7 @@ async function startServer() {
     })
   );
 
-  app.post('/api/documents/upload-pdf', (req, res) => {
+  app.post('/api/documents/upload-pdf', async (req, res) => {
     try {
       const { filename, base64Data, customPublicDomain } = req.body || {};
       if (!base64Data) {
@@ -382,12 +382,22 @@ async function startServer() {
         pdfUrl = `${protocol}://${host}/uploads/pdf/${staticDiskFilename}`;
       }
 
-      console.log(`[PDF UPLOAD SUCCESS] fileId=${fileId}, publicPdfUrl=${pdfUrl}`);
+      // Automatically publish to zero-auth public CDN so Mailketing API and recipient can access it directly
+      let publicCdnUrl = '';
+      try {
+        publicCdnUrl = await getPublicDirectPdfUrl(buffer, finalFilename, pdfUrl);
+      } catch (cdnErr) {
+        console.warn('[PDF UPLOAD CDN] CDN upload warning:', cdnErr);
+      }
+
+      const finalPdfUrl = (publicCdnUrl && publicCdnUrl.startsWith('http')) ? publicCdnUrl : pdfUrl;
+      console.log(`[PDF UPLOAD SUCCESS] fileId=${fileId}, localUrl=${pdfUrl}, publicCdnUrl=${finalPdfUrl}`);
 
       res.json({
         success: true,
         fileId,
-        pdfUrl,
+        pdfUrl: finalPdfUrl,
+        localUrl: pdfUrl,
         filename: finalFilename,
       });
     } catch (err: any) {

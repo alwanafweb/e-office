@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { X, Send, Mail, CheckCircle2, AlertCircle, FileText, Lock, Paperclip, RefreshCw, Copy, Check, Eye } from 'lucide-react';
+import { X, Send, Mail, CheckCircle2, AlertCircle, FileText, Lock, Paperclip, RefreshCw, Copy, Check, Eye, RotateCcw } from 'lucide-react';
 import { CompanyProfile, Customer, Invoice, PKS, SPH } from '../types';
 import { formatIDR, formatDateIndonesian } from '../utils/formatters';
 import { exportToPdf, generatePdfBase64, generateStandaloneDocPdfBase64 } from '../utils/pdfGenerator';
 import { sendEmail } from '../api/mailService';
 import { apiUploadPdf } from '../api/client';
 import { EmailPreviewModal } from './EmailPreviewModal';
+import { replaceEmailPlaceholders, buildFullEmailHtml, DEFAULT_EMAIL_TEMPLATES } from '../utils/emailTemplateHelper';
 
 interface SendDocEmailModalProps {
   isOpen: boolean;
@@ -47,71 +48,26 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
       ? (data as Invoice).customerEmail
       : 'contact@' + customerName.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com';
 
-  const totalAmount =
-    type === 'SPH'
-      ? (data as SPH).grandTotal
-      : type === 'PKS'
-      ? (data as PKS).totalContractValue
-      : (data as Invoice).grandTotal;
-
-  const docDate =
-    type === 'SPH'
-      ? formatDateIndonesian((data as SPH).date)
-      : type === 'PKS'
-      ? `${formatDateIndonesian((data as PKS).startDate)} s/d ${formatDateIndonesian((data as PKS).endDate)}`
-      : formatDateIndonesian((data as Invoice).issueDate);
-
-  // Helper function to replace template placeholders
-  const replacePlaceholders = (templateStr: string) => {
-    return templateStr
-      .replace(/jagoanserver\.com/gi, 'e-office.ldi.co.id')
-      .replace(/\{DOC_NUMBER\}/g, docNumber)
-      .replace(/\{CUSTOMER_NAME\}/g, customerName)
-      .replace(/\{DOC_DATE\}/g, docDate)
-      .replace(/\{TOTAL_AMOUNT\}/g, formatIDR(totalAmount))
-      .replace(/\{PHONE\}/g, companyProfile?.whatsapp || companyProfile?.phone || '087777040496');
-  };
-
   const templates = companyProfile?.emailTemplates;
 
   const rawSubject =
     type === 'SPH'
-      ? templates?.sphSubject
+      ? (templates?.sphSubject || DEFAULT_EMAIL_TEMPLATES.sphSubject)
       : type === 'PKS'
-      ? templates?.pksSubject
-      : templates?.invoiceSubject;
+      ? (templates?.pksSubject || DEFAULT_EMAIL_TEMPLATES.pksSubject)
+      : (templates?.invoiceSubject || DEFAULT_EMAIL_TEMPLATES.invoiceSubject);
 
   const rawBody =
     type === 'SPH'
-      ? templates?.sphBody
+      ? (templates?.sphBody || DEFAULT_EMAIL_TEMPLATES.sphBody)
       : type === 'PKS'
-      ? templates?.pksBody
-      : templates?.invoiceBody;
+      ? (templates?.pksBody || DEFAULT_EMAIL_TEMPLATES.pksBody)
+      : (templates?.invoiceBody || DEFAULT_EMAIL_TEMPLATES.invoiceBody);
 
   const initialCc = templates?.defaultCc ?? 'finance@ldi.co.id, sales@ldi.co.id';
 
-  const defaultSubject = rawSubject
-    ? replacePlaceholders(rawSubject)
-    : `[PT. LDI] Dokumen Resmi ${type} - ${docNumber} (${customerName})`;
-
-  const rawDomain = companyProfile?.website ? companyProfile.website.replace(/^https?:\/\//, '') : 'e-office.ldi.co.id';
-  const domainName = rawDomain.toLowerCase().includes('jagoanserver') ? 'e-office.ldi.co.id' : rawDomain;
-
-  const defaultBody = rawBody
-    ? replacePlaceholders(rawBody)
-    : `Kepada Yth. Bapak/Ibu Tim Manajemen ${customerName},\n\n` +
-      `Bersama email ini, kami dari PT. LINTAS DATA INTERNASIONAL sampaikan Dokumen Resmi ${type} dengan rincian berikut:\n\n` +
-      `• Nomor Dokumen: ${docNumber}\n` +
-      `• Jenis Dokumen: ${type === 'SPH' ? 'Surat Penawaran Harga' : type === 'PKS' ? 'Perjanjian Kerja Sama' : 'Tagihan Invoice Penagihan'}\n` +
-      `• Tanggal: ${docDate}\n` +
-      `• Total Nilai: ${formatIDR(totalAmount)}\n\n` +
-      `Berkas PDF resmi bertanda tangan digital dan stempel sah PT. LDI telah terlampir secara otomatis pada email ini.\n\n` +
-      `Anda juga dapat melakukan verifikasi otentisitas dokumen ini secara langsung melalui Portal Keaslian PT. LDI:\n` +
-      `https://${domainName}/verify?doc=${encodeURIComponent(docNumber)}\n\n` +
-      `Demikian disampaikan. Jika ada pertanyaan lebih lanjut, silakan menghubungi kami.\n\n` +
-      `Hormat Kami,\n` +
-      `PT. LINTAS DATA INTERNASIONAL\n` +
-      `Telp/WA: ${companyProfile?.whatsapp || '0812-9988-7766'} | Website: https://${domainName}`;
+  const defaultSubject = replaceEmailPlaceholders(rawSubject, type, data, companyProfile, customers);
+  const defaultBody = replaceEmailPlaceholders(rawBody, type, data, companyProfile, customers);
 
   // Form States
   const [recipientEmail, setRecipientEmail] = useState(initialEmail || '');
@@ -133,6 +89,24 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [showPreviewModal, setShowPreviewModal] = useState(false);
 
+  const handleResetToStandardTemplate = () => {
+    const stdSubject =
+      type === 'SPH'
+        ? DEFAULT_EMAIL_TEMPLATES.sphSubject
+        : type === 'PKS'
+        ? DEFAULT_EMAIL_TEMPLATES.pksSubject
+        : DEFAULT_EMAIL_TEMPLATES.invoiceSubject;
+    const stdBody =
+      type === 'SPH'
+        ? DEFAULT_EMAIL_TEMPLATES.sphBody
+        : type === 'PKS'
+        ? DEFAULT_EMAIL_TEMPLATES.pksBody
+        : DEFAULT_EMAIL_TEMPLATES.invoiceBody;
+
+    setSubject(replaceEmailPlaceholders(stdSubject, type, data, companyProfile, customers));
+    setMessageBody(replaceEmailPlaceholders(stdBody, type, data, companyProfile, customers));
+  };
+
   const handleSendEmailSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!recipientEmail || !recipientEmail.includes('@')) {
@@ -148,7 +122,7 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
       // Step 1: Render PDF Attachment Buffer from DOM
       setSendStep('1/3 Merender Dokumen PDF & Tanda Tangan Digital...');
       
-      const fileName = `${type}_${docNumber.replace(/\//g, '_')}.pdf`;
+      const fileName = `${type}_${docNumber.replace(/[\/\\]/g, '_')}.pdf`;
       let attachedPdfUrl: string | undefined = undefined;
 
       // Generate actual PDF base64 ensuring 100% exact match with the download view
@@ -161,7 +135,10 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
       if (pdfResult && pdfResult.base64) {
         setSendStep('2/3 Mengunggah Berkas PDF ke Server Gateway LDI...');
         try {
-          const uploadRes = await apiUploadPdf(pdfResult.filename, pdfResult.base64);
+          const customPublicDomain = companyProfile?.website
+            ? (companyProfile.website.startsWith('http') ? companyProfile.website : `https://${companyProfile.website}`)
+            : undefined;
+          const uploadRes = await apiUploadPdf(pdfResult.filename, pdfResult.base64, customPublicDomain);
           if (uploadRes && uploadRes.pdfUrl) {
             attachedPdfUrl = uploadRes.pdfUrl;
           }
@@ -173,43 +150,16 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
       // Step 3: Format email content with interactive download card & verification link
       setSendStep('3/3 Mengirimkan Email & Lampiran PDF via Mailketing Gateway...');
 
-      const formattedContent = `
-        <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; color: #0f172a;">
-          <div style="background-color: #0f172a; padding: 24px; text-align: center; color: #ffffff;">
-            <h2 style="margin: 0; font-size: 20px; text-transform: uppercase; letter-spacing: 1px; color: #38bdf8;">${companyProfile?.name || 'PT. LINTAS DATA INTERNASIONAL'}</h2>
-            <p style="margin: 4px 0 0 0; font-size: 12px; color: #94a3b8;">Pengiriman Dokumen Resmi ${type} (${docNumber})</p>
-          </div>
-          <div style="padding: 24px;">
-            <div style="font-size: 13px; line-height: 1.6; color: #334155;">
-              ${messageBody.replace(/\n/g, '<br/>')}
-            </div>
-
-            ${attachedPdfUrl ? `
-              <div style="background-color: #f0f9ff; border: 2px solid #0284c7; border-radius: 12px; padding: 18px; margin: 24px 0; text-align: center;">
-                <p style="margin: 0 0 8px 0; font-size: 13px; font-weight: bold; color: #0369a1;">📄 Lampiran Dokumen PDF Resmi Terlampir</p>
-                <p style="margin: 0 0 14px 0; font-size: 11px; color: #64748b; font-family: monospace;">${fileName}</p>
-                <a href="${attachedPdfUrl}" target="_blank" style="background-color: #0284c7; color: #ffffff; padding: 11px 22px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 13px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                  📥 Unduh Berkas PDF Dokumen (${type})
-                </a>
-                <p style="margin: 12px 0 0 0; font-size: 10px; color: #64748b;">Dokumen ini telah ditandatangani dan diverifikasi secara digital oleh PT. LDI.</p>
-              </div>
-            ` : ''}
-
-            <div style="background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 14px; margin-top: 16px; font-size: 12px; color: #475569;">
-              <p style="margin: 0 0 4px 0; font-weight: bold; color: #0f172a;">🛡️ Verifikasi Keaslian Dokumen:</p>
-              <p style="margin: 0;">Anda juga dapat memverifikasi otentisitas dokumen ini secara langsung via Portal Keaslian PT. LDI:<br/>
-              <a href="https://${domainName}/verify?doc=${encodeURIComponent(docNumber)}" style="color: #0284c7; font-weight: bold; text-decoration: underline;">
-                https://${domainName}/verify?doc=${encodeURIComponent(docNumber)}
-              </a></p>
-            </div>
-          </div>
-
-          <div style="background-color: #f1f5f9; padding: 16px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0;">
-            Email ini dikirim secara otomatis oleh Mailketing Gateway ${companyProfile?.name || 'PT. LINTAS DATA INTERNASIONAL'}.<br/>
-            &copy; ${new Date().getFullYear()} ${companyProfile?.name || 'PT. LINTAS DATA INTERNASIONAL'}. All rights reserved.
-          </div>
-        </div>
-      `;
+      const formattedContent = buildFullEmailHtml({
+        type,
+        docNumber,
+        customerName,
+        messageBody,
+        data,
+        companyProfile,
+        attachedPdfUrl,
+        fileName,
+      });
 
       const mailRes = await sendEmail({
         recipient: recipientEmail,
@@ -432,19 +382,30 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
 
               {/* Message Body */}
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="font-bold text-slate-800 block">Pesan / Isi Email</label>
-                  <button
-                    type="button"
-                    onClick={() => setShowPreviewModal(true)}
-                    className="text-blue-700 hover:text-blue-900 text-xs font-bold flex items-center gap-1 hover:underline cursor-pointer"
-                  >
-                    <Eye className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Pratinjau Tampilan Email</span>
-                  </button>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="font-bold text-slate-800 text-xs block">Pesan / Isi Email</label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleResetToStandardTemplate}
+                      className="text-slate-600 hover:text-slate-900 text-[11px] font-semibold flex items-center gap-1 hover:underline cursor-pointer"
+                      title="Kembalikan isi teks ke format standar sistem yang lengkap dan terstruktur"
+                    >
+                      <RotateCcw className="w-3 h-3 text-slate-500" />
+                      <span>Muat Template Standar</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowPreviewModal(true)}
+                      className="text-blue-700 hover:text-blue-900 text-[11px] font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Pratinjau Email</span>
+                    </button>
+                  </div>
                 </div>
                 <textarea
-                  rows={6}
+                  rows={8}
                   required
                   value={messageBody}
                   onChange={(e) => setMessageBody(e.target.value)}
@@ -463,7 +424,7 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
                       📄 Auto-Attachment PDF Resmi Terlampir
                     </p>
                     <p className="text-[10px] text-slate-500 font-mono">
-                      {type}_{docNumber.replace(/\//g, '_')}.pdf (Signed & Stamped)
+                      {type}_{docNumber.replace(/[\/\\]/g, '_')}.pdf (Signed & Stamped)
                     </p>
                   </div>
                 </div>
@@ -535,6 +496,8 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
         subject={subject}
         messageBody={messageBody}
         companyProfile={companyProfile}
+        data={data}
+        customers={customers}
       />
     </div>
   );

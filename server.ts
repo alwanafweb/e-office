@@ -161,7 +161,7 @@ async function startServer() {
   });
 
   // Mailketing API Configuration
-  const MAILKETING_API_KEY = process.env.MAILKETING_TOKEN || '5aafffa0c30e5a87235b66f6e1c0e440';
+  const MAILKETING_API_KEY = process.env.MAILKETING_TOKEN || process.env.VITE_MAILKETING_API_KEY || 'e6f901cb964cd1c0fb59453f3450329d';
   const otpStore = new Map<string, { code: string; expiresAt: number; type: string; payload?: any }>();
   let lastCronRunTime: string | null = null;
 
@@ -355,10 +355,16 @@ async function startServer() {
       }
 
       // Determine public domain & protocol
-      const host = req.get('host') || 'e-office.ldi.co.id';
-      const forwardedProto = req.headers['x-forwarded-proto'];
-      const protocol = (host.includes('ldi.co.id') || forwardedProto === 'https' || req.secure) ? 'https' : (forwardedProto || req.protocol);
-      const pdfUrl = `${protocol}://${host}/api/documents/pdf/${fileId}/${encodeURIComponent(finalFilename)}`;
+      const publicBaseUrl = (req.body?.customPublicDomain || process.env.PUBLIC_APP_URL || process.env.APP_URL || '').trim();
+      let pdfUrl = '';
+      if (publicBaseUrl && publicBaseUrl.startsWith('http')) {
+        pdfUrl = `${publicBaseUrl.replace(/\/$/, '')}/api/documents/pdf/${fileId}/${encodeURIComponent(finalFilename)}`;
+      } else {
+        const host = req.get('host') || 'e-office.ldi.co.id';
+        const forwardedProto = req.headers['x-forwarded-proto'];
+        const protocol = (host.includes('ldi.co.id') || forwardedProto === 'https' || req.secure) ? 'https' : (forwardedProto || req.protocol);
+        pdfUrl = `${protocol}://${host}/api/documents/pdf/${fileId}/${encodeURIComponent(finalFilename)}`;
+      }
 
       res.json({
         success: true,
@@ -397,12 +403,13 @@ async function startServer() {
       return res.status(404).send('Dokumen PDF tidak ditemukan atau telah kedaluwarsa.');
     }
 
+    const isDownload = req.query.dl === '1' || req.query.download === '1';
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', '*');
     res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${stored.filename}"`);
+    res.setHeader('Content-Disposition', `${isDownload ? 'attachment' : 'inline'}; filename="${stored.filename}"`);
     res.setHeader('Content-Length', stored.buffer.length.toString());
     res.setHeader('Accept-Ranges', 'bytes');
     res.send(stored.buffer);

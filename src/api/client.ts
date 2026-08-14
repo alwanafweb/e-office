@@ -257,11 +257,12 @@ export const apiSyncAllData = async (data: SyncDataPayload): Promise<{ success: 
 
 export const apiUploadPdf = async (
   filename: string,
-  base64Data: string
+  base64Data: string,
+  customPublicDomain?: string
 ): Promise<{ success: boolean; fileId: string; pdfUrl: string; filename: string }> => {
   return apiFetch<{ success: boolean; fileId: string; pdfUrl: string; filename: string }>('/api/documents/upload-pdf', {
     method: 'POST',
-    body: JSON.stringify({ filename, base64Data }),
+    body: JSON.stringify({ filename, base64Data, customPublicDomain }),
   });
 };
 

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { X, Send, Mail, Monitor, Smartphone, Paperclip, Lock, ShieldCheck, RefreshCw, CheckCircle2, ArrowLeft, ExternalLink } from 'lucide-react';
-import { CompanyProfile } from '../types';
+import { CompanyProfile, Customer, Invoice, PKS, SPH } from '../types';
+import { extractEmailPlaceholderData } from '../utils/emailTemplateHelper';
+import { formatIDR } from '../utils/formatters';
 
 interface EmailPreviewModalProps {
   isOpen: boolean;
@@ -16,6 +18,8 @@ interface EmailPreviewModalProps {
   subject: string;
   messageBody: string;
   companyProfile?: CompanyProfile;
+  data?: SPH | PKS | Invoice;
+  customers?: Customer[];
 }
 
 export const EmailPreviewModal: React.FC<EmailPreviewModalProps> = ({
@@ -32,12 +36,15 @@ export const EmailPreviewModal: React.FC<EmailPreviewModalProps> = ({
   subject,
   messageBody,
   companyProfile,
+  data,
+  customers,
 }) => {
   if (!isOpen) return null;
 
   const [deviceMode, setDeviceMode] = useState<'desktop' | 'mobile'>('desktop');
 
-  const fileName = `${type}_${docNumber.replace(/\//g, '_')}.pdf`;
+  const fileName = `${type}_${docNumber.replace(/[\/\\]/g, '_')}.pdf`;
+  const meta = data ? extractEmailPlaceholderData(type, data, companyProfile, customers) : null;
   const rawDomain = companyProfile?.website ? companyProfile.website.replace(/^https?:\/\//, '') : 'e-office.ldi.co.id';
   const domainName = rawDomain.toLowerCase().includes('jagoanserver') ? 'e-office.ldi.co.id' : rawDomain;
   const verifyUrl = `https://${domainName}/verify?doc=${encodeURIComponent(docNumber)}`;
@@ -61,20 +68,32 @@ export const EmailPreviewModal: React.FC<EmailPreviewModalProps> = ({
     // Regex to match http/https URLs
     const urlRegex = /(https?:\/\/[^\s<]+)/g;
 
-    const lines = escaped.split('\n');
-    const formattedLines = lines.map((line) => {
-      return line.replace(urlRegex, (url) => {
-        let cleanUrl = url;
-        let trailingPunct = '';
-        if (/[.,;!?]$/.test(cleanUrl)) {
-          trailingPunct = cleanUrl.slice(-1);
-          cleanUrl = cleanUrl.slice(0, -1);
-        }
-        return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-600 font-bold underline hover:text-blue-800 break-all inline-flex items-center gap-0.5">${cleanUrl}</a>${trailingPunct}`;
-      });
-    });
+    const blocks = escaped.split('\n\n');
+    return blocks
+      .map((block) => {
+        const formattedLines = block.split('\n').map((line) => {
+          let formattedLine = line.replace(urlRegex, (url) => {
+            let cleanUrl = url;
+            let trailingPunct = '';
+            if (/[.,;!?]$/.test(cleanUrl)) {
+              trailingPunct = cleanUrl.slice(-1);
+              cleanUrl = cleanUrl.slice(0, -1);
+            }
+            return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-600 font-bold underline hover:text-blue-800 break-all inline-flex items-center gap-0.5">${cleanUrl}</a>${trailingPunct}`;
+          });
 
-    return formattedLines.join('<br/>');
+          if (formattedLine.startsWith('•') || formattedLine.startsWith('-')) {
+            return `<div class="pl-2 my-0.5 text-slate-800">${formattedLine}</div>`;
+          }
+          if (formattedLine.startsWith('📋') || formattedLine.startsWith('📦') || formattedLine.startsWith('💰') || formattedLine.startsWith('🏦') || formattedLine.startsWith('🛡️')) {
+            return `<div class="font-bold text-slate-900 mt-2 mb-1 uppercase tracking-wide text-xs">${formattedLine}</div>`;
+          }
+          return formattedLine;
+        });
+
+        return `<p class="mb-3 leading-relaxed text-slate-700">${formattedLines.join('<br/>')}</p>`;
+      })
+      .join('');
   };
 
   return (
@@ -94,7 +113,7 @@ export const EmailPreviewModal: React.FC<EmailPreviewModalProps> = ({
                 </span>
               </h3>
               <p className="text-[11px] text-slate-400">
-                Melihat persis bagaimana email akan diterima oleh pelanggan sebelum dikirim.
+                Melihat persis bagaimana email dan rincian dokumen akan diterima oleh pelanggan di inbox.
               </p>
             </div>
           </div>
@@ -175,17 +194,36 @@ export const EmailPreviewModal: React.FC<EmailPreviewModalProps> = ({
             }`}
           >
             {/* Corporate Email Banner */}
-            <div className="bg-slate-900 p-6 text-center text-white">
+            <div className="bg-slate-900 p-6 text-center text-white border-b-2 border-sky-500">
               <h2 className="m-0 text-lg font-black uppercase tracking-wider text-cyan-400">
                 {companyName}
               </h2>
               <p className="m-0 mt-1 text-xs text-slate-400 font-medium">
-                Pengiriman Dokumen Resmi {type} ({docNumber})
+                Portal Dokumen Resmi Enterprise &bull; {type === 'Invoice' ? 'Faktur Tagihan (Invoice)' : type === 'SPH' ? 'Surat Penawaran Harga (SPH)' : 'Perjanjian Kerja Sama (PKS)'}
               </p>
             </div>
 
+            {/* Document Info Strip */}
+            <div className="bg-slate-50 px-6 py-3 border-b border-slate-200 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-slate-500 font-bold uppercase block">Nomor Dokumen:</span>
+                <strong className="text-xs font-mono text-slate-900">{docNumber}</strong>
+              </div>
+              <span
+                className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-md border ${
+                  type === 'Invoice'
+                    ? (meta?.paymentStatus === 'LUNAS'
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                        : 'bg-rose-100 text-rose-800 border-rose-300')
+                    : 'bg-sky-100 text-sky-800 border-sky-300'
+                }`}
+              >
+                {type === 'Invoice' ? `STATUS: ${meta?.paymentStatus || 'BELUM BAYAR'}` : type}
+              </span>
+            </div>
+
             {/* Content Body */}
-            <div className="p-6 space-y-5">
+            <div className="p-6 space-y-4">
               {/* Message Content */}
               <div
                 className="text-xs sm:text-sm text-slate-800 leading-relaxed font-sans"
@@ -193,6 +231,58 @@ export const EmailPreviewModal: React.FC<EmailPreviewModalProps> = ({
                   __html: formatMessageBodyToHtml(messageBody),
                 }}
               />
+
+              {/* Invoice Items Summary Box */}
+              {type === 'Invoice' && meta && (
+                <div className="border border-slate-300 rounded-xl overflow-hidden bg-white my-4 shadow-sm">
+                  <div className="bg-slate-900 text-white px-3.5 py-2 font-bold text-xs uppercase tracking-wide flex items-center justify-between">
+                    <span>Rincian Tagihan Layanan</span>
+                    <span className="font-mono text-[11px] text-cyan-300 font-normal">#{docNumber}</span>
+                  </div>
+                  <div className="p-3 text-xs space-y-2">
+                    <div className="flex justify-between items-center text-slate-600 text-[11px] border-b border-slate-100 pb-2">
+                      <span>Jatuh Tempo: <strong className="text-rose-700 font-bold">{meta.dueDate}</strong></span>
+                      <span>Tanggal: <strong className="text-slate-800">{meta.docDate}</strong></span>
+                    </div>
+
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex justify-between text-slate-600">
+                        <span>Subtotal Tagihan:</span>
+                        <span className="font-mono font-medium text-slate-800">{formatIDR(meta.subtotal)}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-600">
+                        <span>PPN ({meta.taxPercent}%):</span>
+                        <span className="font-mono font-medium text-slate-800">{formatIDR(meta.taxAmount)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-sky-950 font-black text-xs pt-2 border-t-2 border-sky-600">
+                        <span className="uppercase">Total Tagihan (Grand Total):</span>
+                        <span className="font-mono text-sm text-sky-700 font-black">{formatIDR(meta.totalAmount)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Official Bank Account Card */}
+              {type === 'Invoice' && meta && (
+                <div className="bg-slate-50 border-2 border-dashed border-sky-600 rounded-xl p-4 my-4 space-y-1">
+                  <p className="text-[10px] font-black text-sky-800 uppercase tracking-wide flex items-center gap-1.5">
+                    🏦 Rekening Pembayaran Resmi PT. LDI:
+                  </p>
+                  <p className="font-bold text-xs text-slate-900">{meta.bankName}</p>
+                  <p className="font-mono text-base font-black text-sky-700 tracking-wider my-0.5">
+                    {meta.bankAccount}
+                  </p>
+                  <p className="text-[11px] text-slate-600">
+                    a.n. <strong>{meta.bankHolder}</strong> {meta.bankBranch ? `• Cabang: ${meta.bankBranch}` : ''}
+                  </p>
+                  {meta.bankNotes && (
+                    <p className="text-[10px] text-slate-500 italic mt-1 pt-1 border-t border-slate-200">
+                      * {meta.bankNotes}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Attachment Preview Card */}
               <div className="bg-sky-50 border-2 border-sky-500/80 rounded-xl p-4 text-center space-y-2">
@@ -235,7 +325,7 @@ export const EmailPreviewModal: React.FC<EmailPreviewModalProps> = ({
 
             {/* Email Footer */}
             <div className="bg-slate-100 p-4 text-center text-[11px] text-slate-500 border-t border-slate-200">
-              Email ini dikirim secara otomatis oleh Mailketing Gateway {companyName}.<br />
+              Email ini dikirim secara otomatis oleh Gateway Resmi {companyName}.<br />
               &copy; {new Date().getFullYear()} {companyName}. All rights reserved.
             </div>
           </div>

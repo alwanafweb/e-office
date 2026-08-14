@@ -36,55 +36,84 @@ export const COMPANY_PROFILE: CompanyProfile = {
   mailketingSenderEmail: 'alwanemail@gmail.com',
   emailTemplates: {
     defaultCc: 'finance@ldi.co.id, sales@ldi.co.id',
-    sphSubject: '[PT. LDI] Dokumen Penawaran Harga (SPH) {DOC_NUMBER} - {CUSTOMER_NAME}',
+    sphSubject: '[PT. LDI] Surat Penawaran Harga (SPH) #{DOC_NUMBER} - {CUSTOMER_NAME}',
     sphBody: `Kepada Yth. Bapak/Ibu Tim Manajemen {CUSTOMER_NAME},
 
-Bersama email ini, kami dari PT. LINTAS DATA INTERNASIONAL sampaikan Dokumen Resmi Surat Penawaran Harga (SPH) dengan rincian berikut:
+Bersama email ini, kami dari PT. LINTAS DATA INTERNASIONAL menyampaikan Dokumen Resmi Surat Penawaran Harga (SPH) dengan rincian sebagai berikut:
 
+📋 DETAIL PENAWARAN:
 • Nomor SPH: {DOC_NUMBER}
 • Tanggal Terbit: {DOC_DATE}
+• Masa Berlaku: {VALIDITY_DAYS}
 • Total Nilai Penawaran: {TOTAL_AMOUNT}
 
-Berkas PDF resmi bertanda tangan digital dan stempel sah PT. LDI telah terlampir secara otomatis pada email ini.
+📦 RINCIAN LAYANAN DITAWARKAN:
+{ITEMS_LIST}
 
-Anda dapat melakukan verifikasi keaslian dokumen secara langsung melalui Portal Keaslian PT. LDI:
-https://e-office.ldi.co.id/verify?doc={DOC_NUMBER}
+Berkas PDF resmi SPH bertanda tangan digital dan stempel sah PT. LDI telah terlampir secara otomatis pada email ini.
 
-Demikian disampaikan. Jika ada pertanyaan lebih lanjut, silakan menghubungi kami.
+Verifikasi Keaslian Dokumen:
+{VERIFY_URL}
+
+Demikian penawaran ini kami sampaikan. Jika ada pertanyaan lebih lanjut, silakan menghubungi tim kami.
 
 Hormat Kami,
 PT. LINTAS DATA INTERNASIONAL
-Telp/WA: {PHONE} | Website: https://e-office.ldi.co.id`,
-    pksSubject: '[PT. LDI] Perjanjian Kerja Sama (PKS) {DOC_NUMBER} - {CUSTOMER_NAME}',
-    pksBody: `Kepada Yth. Bapak/Ibu Tim Manajemen {CUSTOMER_NAME},
+Telp/WA: {PHONE} | Website: {WEBSITE}`,
+    pksSubject: '[PT. LDI] Dokumen Perjanjian Kerja Sama (PKS) #{DOC_NUMBER} - {CUSTOMER_NAME}',
+    pksBody: `Kepada Yth. Bapak/Ibu Tim Legal & Manajemen {CUSTOMER_NAME},
 
 Bersama email ini, kami sampaikan salinan Dokumen Resmi Perjanjian Kerja Sama (PKS) PT. LINTAS DATA INTERNASIONAL:
 
+📋 DETAIL PERJANJIAN:
 • Nomor Kontrak PKS: {DOC_NUMBER}
 • Periode Layanan: {DOC_DATE}
 • Nilai Kontrak: {TOTAL_AMOUNT}
 
+📦 LAYANAN KERJA SAMA:
+{ITEMS_LIST}
+
 Berkas PDF PKS lengkap beserta Lampiran Syarat & Ketentuan Layanan (SLA) telah terlampir pada email ini.
+
+Verifikasi Keaslian Dokumen:
+{VERIFY_URL}
 
 Hormat Kami,
 PT. LINTAS DATA INTERNASIONAL
-Telp/WA: {PHONE} | Website: https://e-office.ldi.co.id`,
-    invoiceSubject: '[PT. LDI] Tagihan Penagihan (Invoice) {DOC_NUMBER} - {CUSTOMER_NAME}',
-    invoiceBody: `Kepada Yth. Bapak/Ibu Tim Keuangan {CUSTOMER_NAME},
+Telp/WA: {PHONE} | Website: {WEBSITE}`,
+    invoiceSubject: '[PT. LDI] Tagihan Faktur Invoice #{DOC_NUMBER} - {CUSTOMER_NAME}',
+    invoiceBody: `Kepada Yth. Bapak/Ibu Tim Keuangan & Manajemen {CUSTOMER_NAME},
 
-Terlampir dokumen Tagihan Invoice Resmi dari PT. LINTAS DATA INTERNASIONAL untuk periode layanan berjalan:
+Bersama email ini, kami dari PT. LINTAS DATA INTERNASIONAL sampaikan Faktur Tagihan Resmi (Invoice) periode layanan berjalan dengan rincian sebagai berikut:
 
+📋 DETAIL INVOICE:
 • Nomor Invoice: {DOC_NUMBER}
 • Tanggal Terbit: {DOC_DATE}
-• Total Tagihan: {TOTAL_AMOUNT}
+• Tanggal Jatuh Tempo: {DUE_DATE}
+• Status Pembayaran: {PAYMENT_STATUS}
 
-Pembayaran dapat ditransfer ke rekening resmi PT. LDI yang tertera pada lembar invoice PDF terlampir.
+📦 RINCIAN LAYANAN & ITEM TAGIHAN:
+{ITEMS_LIST}
 
-Terima kasih atas kerja sama dan kepercayaan Anda.
+💰 RINGKASAN PEMBAYARAN:
+• Subtotal: {SUBTOTAL}
+• PPN (11%): {TAX_AMOUNT}
+• TOTAL TAGIHAN (Grand Total): {TOTAL_AMOUNT}
+
+🏦 INSTRUKSI PEMBAYARAN (REKENING RESMI PT. LDI):
+{BANK_INFO}
+(Mohon mencantumkan Nomor Invoice #{DOC_NUMBER} pada kolom berita transfer)
+
+Berkas PDF resmi Invoice bertanda tangan digital dan stempel sah PT. LDI telah terlampir pada email ini.
+
+Verifikasi Keaslian Dokumen:
+{VERIFY_URL}
+
+Terima kasih atas kerja sama dan kepercayaan Anda terhadap layanan PT. LDI.
 
 Hormat Kami,
 Departemen Keuangan PT. LINTAS DATA INTERNASIONAL
-Telp/WA: {PHONE} | Website: https://e-office.ldi.co.id`,
+Telp/WA: {PHONE} | Website: {WEBSITE}`,
   },
 };
 

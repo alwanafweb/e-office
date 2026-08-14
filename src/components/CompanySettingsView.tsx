@@ -8,6 +8,7 @@ import { sendEmail } from '../api/mailService';
 import { apiUploadPdf } from '../api/client';
 import { generateStandaloneDocPdfBase64 } from '../utils/pdfGenerator';
 import { formatDateIndonesian, formatIDR } from '../utils/formatters';
+import { buildFullEmailHtml, replaceEmailPlaceholders, DEFAULT_EMAIL_TEMPLATES } from '../utils/emailTemplateHelper';
 
 interface CompanySettingsViewProps {
   companyProfile: CompanyProfile;
@@ -209,20 +210,9 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
         bodyTemplate = profile.emailTemplates?.invoiceBody || `Kepada Yth. Bagian Keuangan {CUSTOMER_NAME},\n\nBerikut kami sampaikan Invoice Tagihan Resmi #{DOC_NUMBER} dari PT. LINTAS DATA INTERNASIONAL.\n\nTotal Tagihan: {TOTAL_AMOUNT}\nTanggal Terbit: {DOC_DATE}\n\nSilakan unduh dokumen PDF terlampir untuk petunjuk pembayaran dan nomor rekening resmi.`;
       }
 
-      // Replace placeholders in subject and body
-      const finalSubject = subjectTemplate
-        .replace(/\{DOC_NUMBER\}/g, docNumber)
-        .replace(/\{CUSTOMER_NAME\}/g, customerName)
-        .replace(/\{DOC_DATE\}/g, docDate)
-        .replace(/\{TOTAL_AMOUNT\}/g, formatIDR(totalAmount))
-        .replace(/\{PHONE\}/g, profile.whatsapp || profile.phone || '087777040496');
-
-      const finalBodyText = bodyTemplate
-        .replace(/\{DOC_NUMBER\}/g, docNumber)
-        .replace(/\{CUSTOMER_NAME\}/g, customerName)
-        .replace(/\{DOC_DATE\}/g, docDate)
-        .replace(/\{TOTAL_AMOUNT\}/g, formatIDR(totalAmount))
-        .replace(/\{PHONE\}/g, profile.whatsapp || profile.phone || '087777040496');
+      // Replace placeholders in subject and body using helper
+      const finalSubject = replaceEmailPlaceholders(subjectTemplate, selectedType, sampleData, profile);
+      const finalBodyText = replaceEmailPlaceholders(bodyTemplate, selectedType, sampleData, profile);
 
       let attachedPdfUrl: string | undefined = undefined;
       let generatedPdfFilename = `${selectedType}_${docNumber.replace(/[\/\\]/g, '_')}.pdf`;
@@ -237,7 +227,10 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
         try {
           const pdfResult = await generateStandaloneDocPdfBase64(selectedType, sampleData, profile);
           if (pdfResult && pdfResult.base64) {
-            const uploadRes = await apiUploadPdf(pdfResult.filename, pdfResult.base64);
+            const customPublicDomain = profile?.website
+              ? (profile.website.startsWith('http') ? profile.website : `https://${profile.website}`)
+              : undefined;
+            const uploadRes = await apiUploadPdf(pdfResult.filename, pdfResult.base64, customPublicDomain);
             if (uploadRes && uploadRes.pdfUrl) {
               attachedPdfUrl = uploadRes.pdfUrl;
               generatedPdfFilename = uploadRes.filename || generatedPdfFilename;
@@ -254,43 +247,16 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
         step: `3/3 Mengirimkan Email Template ${selectedType} ke ${targetRecipient} via Mailketing API...` 
       });
 
-      const formattedHtmlContent = `
-        <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; color: #0f172a;">
-          <div style="background-color: #0f172a; padding: 24px; text-align: center; color: #ffffff;">
-            <h2 style="margin: 0; font-size: 20px; text-transform: uppercase; letter-spacing: 1px; color: #38bdf8;">${profile.name || 'PT. LINTAS DATA INTERNASIONAL'}</h2>
-            <p style="margin: 4px 0 0 0; font-size: 12px; color: #94a3b8;">Pengiriman Dokumen Resmi ${selectedType} (${docNumber})</p>
-          </div>
-          <div style="padding: 24px;">
-            <div style="font-size: 13px; line-height: 1.6; color: #334155;">
-              ${finalBodyText.replace(/\n/g, '<br/>')}
-            </div>
-
-            ${attachedPdfUrl ? `
-              <div style="background-color: #f0f9ff; border: 2px solid #0284c7; border-radius: 12px; padding: 18px; margin: 24px 0; text-align: center;">
-                <p style="margin: 0 0 8px 0; font-size: 13px; font-weight: bold; color: #0369a1;">📄 Lampiran Dokumen PDF Resmi Terlampir</p>
-                <p style="margin: 0 0 14px 0; font-size: 11px; color: #64748b; font-family: monospace;">${generatedPdfFilename}</p>
-                <a href="${attachedPdfUrl}" target="_blank" style="background-color: #0284c7; color: #ffffff; padding: 11px 22px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 13px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                  📥 Unduh Berkas PDF Dokumen (${selectedType})
-                </a>
-                <p style="margin: 12px 0 0 0; font-size: 10px; color: #64748b;">Dokumen ini telah ditandatangani dan diverifikasi secara digital oleh PT. LDI.</p>
-              </div>
-            ` : ''}
-
-            <div style="background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 14px; margin-top: 16px; font-size: 12px; color: #475569;">
-              <p style="margin: 0 0 4px 0; font-weight: bold; color: #0f172a;">🛡️ Verifikasi Keaslian Dokumen:</p>
-              <p style="margin: 0;">Anda juga dapat memverifikasi otentisitas dokumen ini secara langsung via Portal Keaslian PT. LDI:<br/>
-              <a href="https://${domainName}/verify?doc=${encodeURIComponent(docNumber)}" style="color: #0284c7; font-weight: bold; text-decoration: underline;">
-                https://${domainName}/verify?doc=${encodeURIComponent(docNumber)}
-              </a></p>
-            </div>
-          </div>
-
-          <div style="background-color: #f1f5f9; padding: 16px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0;">
-            Email ini dikirim secara otomatis oleh Mailketing Gateway ${profile.name || 'PT. LINTAS DATA INTERNASIONAL'}.<br/>
-            &copy; ${new Date().getFullYear()} ${profile.name || 'PT. LINTAS DATA INTERNASIONAL'}. All rights reserved.
-          </div>
-        </div>
-      `;
+      const formattedHtmlContent = buildFullEmailHtml({
+        type: selectedType,
+        docNumber,
+        customerName,
+        messageBody: finalBodyText,
+        data: sampleData,
+        companyProfile: profile,
+        attachedPdfUrl,
+        fileName: generatedPdfFilename,
+      });
 
       const res = await sendEmail({
         recipient: targetRecipient,
@@ -1357,16 +1323,26 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
           </div>
 
           {/* Placeholders Help Box */}
-          <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-3 text-xs text-blue-950 space-y-1">
-            <p className="font-bold text-blue-900 flex items-center gap-1.5">
-              <span>💡 Variable Otomatis (Dapat Digunakan dalam Subjek & Isi Email):</span>
+          <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-3.5 text-xs text-blue-950 space-y-2">
+            <p className="font-bold text-blue-900 flex items-center justify-between">
+              <span>💡 Variabel Otomatis Tersedia (Subjek & Isi Email):</span>
+              <span className="text-[11px] text-blue-700 font-normal">Otomatis diganti sesuai data dokumen real</span>
             </p>
-            <div className="flex flex-wrap gap-2 text-[11px] pt-1">
-              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900">{`{DOC_NUMBER}`}</span>
-              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900">{`{CUSTOMER_NAME}`}</span>
-              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900">{`{DOC_DATE}`}</span>
-              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900">{`{TOTAL_AMOUNT}`}</span>
-              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900">{`{PHONE}`}</span>
+            <div className="flex flex-wrap gap-1.5 text-[11px]">
+              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900" title="Nomor Dokumen SPH/PKS/Invoice">{`{DOC_NUMBER}`}</span>
+              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900" title="Nama Klien / Perusahaan">{`{CUSTOMER_NAME}`}</span>
+              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900" title="Tanggal Terbit Dokumen">{`{DOC_DATE}`}</span>
+              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900" title="Total Nilai / Grand Total">{`{TOTAL_AMOUNT}`}</span>
+              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900" title="Daftar Rincian Layanan / Item">{`{ITEMS_LIST}`}</span>
+              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900" title="Subtotal Sebelum Pajak">{`{SUBTOTAL}`}</span>
+              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900" title="Nilai PPN 11%">{`{TAX_AMOUNT}`}</span>
+              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900" title="Rekening Transfer Resmi PT LDI">{`{BANK_INFO}`}</span>
+              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900" title="Tanggal Jatuh Tempo">{`{DUE_DATE}`}</span>
+              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900" title="Status Pembayaran (LUNAS / BELUM BAYAR)">{`{PAYMENT_STATUS}`}</span>
+              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900" title="Masa Berlaku Dokumen">{`{VALIDITY_DAYS}`}</span>
+              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900" title="Tautan Verifikasi Keaslian Dokumen">{`{VERIFY_URL}`}</span>
+              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900" title="Nomor Telepon / WhatsApp">{`{PHONE}`}</span>
+              <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900" title="Domain / Website PT LDI">{`{WEBSITE}`}</span>
             </div>
           </div>
 
@@ -1631,23 +1607,35 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
             {/* Editor SPH */}
             {emailTemplateTab === 'SPH' && (
               <div className="pt-4 space-y-3">
-                <div>
-                  <label className="font-bold text-slate-800 text-xs block mb-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-800 text-xs">
                     Subjek Email SPH
                   </label>
-                  <input
-                    type="text"
-                    value={profile.emailTemplates?.sphSubject || ''}
-                    onChange={(e) => handleEmailTemplateChange('sphSubject', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Reset template email SPH ke format standar lengkap?')) {
+                        handleEmailTemplateChange('sphSubject', DEFAULT_EMAIL_TEMPLATES.sphSubject);
+                        handleEmailTemplateChange('sphBody', DEFAULT_EMAIL_TEMPLATES.sphBody);
+                      }
+                    }}
+                    className="text-[11px] font-bold text-blue-700 hover:text-blue-900 flex items-center gap-1"
+                  >
+                    <RotateCcw className="w-3 h-3" /> Reset Template SPH Standar
+                  </button>
                 </div>
+                <input
+                  type="text"
+                  value={profile.emailTemplates?.sphSubject || ''}
+                  onChange={(e) => handleEmailTemplateChange('sphSubject', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
                 <div>
                   <label className="font-bold text-slate-800 text-xs block mb-1">
                     Isi Pesan Email SPH
                   </label>
                   <textarea
-                    rows={8}
+                    rows={10}
                     value={profile.emailTemplates?.sphBody || ''}
                     onChange={(e) => handleEmailTemplateChange('sphBody', e.target.value)}
                     className="w-full p-3 border border-slate-300 rounded-xl text-xs font-mono text-slate-800 leading-relaxed focus:ring-2 focus:ring-blue-500 focus:outline-none"
@@ -1659,23 +1647,35 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
             {/* Editor PKS */}
             {emailTemplateTab === 'PKS' && (
               <div className="pt-4 space-y-3">
-                <div>
-                  <label className="font-bold text-slate-800 text-xs block mb-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-800 text-xs">
                     Subjek Email PKS
                   </label>
-                  <input
-                    type="text"
-                    value={profile.emailTemplates?.pksSubject || ''}
-                    onChange={(e) => handleEmailTemplateChange('pksSubject', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Reset template email PKS ke format standar lengkap?')) {
+                        handleEmailTemplateChange('pksSubject', DEFAULT_EMAIL_TEMPLATES.pksSubject);
+                        handleEmailTemplateChange('pksBody', DEFAULT_EMAIL_TEMPLATES.pksBody);
+                      }
+                    }}
+                    className="text-[11px] font-bold text-blue-700 hover:text-blue-900 flex items-center gap-1"
+                  >
+                    <RotateCcw className="w-3 h-3" /> Reset Template PKS Standar
+                  </button>
                 </div>
+                <input
+                  type="text"
+                  value={profile.emailTemplates?.pksSubject || ''}
+                  onChange={(e) => handleEmailTemplateChange('pksSubject', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
                 <div>
                   <label className="font-bold text-slate-800 text-xs block mb-1">
                     Isi Pesan Email PKS
                   </label>
                   <textarea
-                    rows={8}
+                    rows={10}
                     value={profile.emailTemplates?.pksBody || ''}
                     onChange={(e) => handleEmailTemplateChange('pksBody', e.target.value)}
                     className="w-full p-3 border border-slate-300 rounded-xl text-xs font-mono text-slate-800 leading-relaxed focus:ring-2 focus:ring-blue-500 focus:outline-none"
@@ -1687,23 +1687,35 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
             {/* Editor Invoice */}
             {emailTemplateTab === 'Invoice' && (
               <div className="pt-4 space-y-3">
-                <div>
-                  <label className="font-bold text-slate-800 text-xs block mb-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-800 text-xs">
                     Subjek Email Invoice
                   </label>
-                  <input
-                    type="text"
-                    value={profile.emailTemplates?.invoiceSubject || ''}
-                    onChange={(e) => handleEmailTemplateChange('invoiceSubject', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Reset template email Invoice ke format standar lengkap?')) {
+                        handleEmailTemplateChange('invoiceSubject', DEFAULT_EMAIL_TEMPLATES.invoiceSubject);
+                        handleEmailTemplateChange('invoiceBody', DEFAULT_EMAIL_TEMPLATES.invoiceBody);
+                      }
+                    }}
+                    className="text-[11px] font-bold text-blue-700 hover:text-blue-900 flex items-center gap-1"
+                  >
+                    <RotateCcw className="w-3 h-3" /> Reset Template Invoice Standar
+                  </button>
                 </div>
+                <input
+                  type="text"
+                  value={profile.emailTemplates?.invoiceSubject || ''}
+                  onChange={(e) => handleEmailTemplateChange('invoiceSubject', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
                 <div>
                   <label className="font-bold text-slate-800 text-xs block mb-1">
                     Isi Pesan Email Invoice
                   </label>
                   <textarea
-                    rows={8}
+                    rows={10}
                     value={profile.emailTemplates?.invoiceBody || ''}
                     onChange={(e) => handleEmailTemplateChange('invoiceBody', e.target.value)}
                     className="w-full p-3 border border-slate-300 rounded-xl text-xs font-mono text-slate-800 leading-relaxed focus:ring-2 focus:ring-blue-500 focus:outline-none"

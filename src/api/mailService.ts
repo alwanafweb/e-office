@@ -31,7 +31,7 @@ const getMailketingApiKey = (): string => {
 const MAILKETING_API_URL = 'https://api.mailketing.co.id/api/v1/send';
 
 /**
- * Direct client-side call to Mailketing API (used as fallback when backend /api/mail/send is unavailable or returns HTML)
+ * Direct client-side call to Mailketing API (used as fallback when backend /api/mail/send is unavailable)
  */
 async function sendDirectMailketing(options: MailOptions): Promise<MailServiceResult> {
   const {
@@ -47,36 +47,33 @@ async function sendDirectMailketing(options: MailOptions): Promise<MailServiceRe
 
   const apiKey = (mailketingApiKey && mailketingApiKey.trim()) || getMailketingApiKey();
 
-  const jsonPayload = {
-    api_token: apiKey,
-    api_key: apiKey,
-    recipient: recipient,
-    subject: subject,
-    content: content,
-    from_name: senderName,
-    sender_name: senderName,
-    from_email: senderEmail,
-    sender_email: senderEmail,
-    ...(cc && cc.trim() ? { cc: cc.trim() } : {}),
-    ...(attachmentUrl ? { attach1: attachmentUrl } : {}),
-  };
+  // Mailketing API v1 MUST use application/x-www-form-urlencoded
+  const formParams = new URLSearchParams();
+  formParams.set('api_token', apiKey);
+  formParams.set('from_name', senderName);
+  formParams.set('from_email', senderEmail);
+  formParams.set('recipient', recipient.trim());
+  formParams.set('subject', subject);
+  formParams.set('content', content);
+  if (attachmentUrl && attachmentUrl.trim()) {
+    formParams.set('attach1', attachmentUrl.trim());
+  }
 
   console.group(`[MAILKETING CLIENT] Email Dispatch -> ${recipient}`);
   console.log('Timestamp:', new Date().toISOString());
   console.log('Target Endpoint:', MAILKETING_API_URL);
   console.log('Sender:', `"${senderName}" <${senderEmail}>`);
   console.log('Subject:', subject);
-  console.log('Payload Headers:', { 'Content-Type': 'application/json', Accept: 'application/json' });
-  console.log('Payload Body:', { ...jsonPayload, api_token: '***HIDDEN***', api_key: '***HIDDEN***' });
+  console.log('Payload Type:', 'application/x-www-form-urlencoded');
 
   try {
     const response = await fetch(MAILKETING_API_URL, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json',
       },
-      body: JSON.stringify(jsonPayload),
+      body: formParams.toString(),
     });
 
     const responseStatus = response.status;
@@ -86,7 +83,6 @@ async function sendDirectMailketing(options: MailOptions): Promise<MailServiceRe
     console.log('Response Status:', responseStatus, response.statusText);
     console.log('Response Content-Type:', responseContentType);
     console.log('Response Body:', responseText.length > 300 ? responseText.substring(0, 300) + '...' : responseText);
-    console.groupEnd();
 
     let responseData: any = {};
     try {
@@ -95,15 +91,8 @@ async function sendDirectMailketing(options: MailOptions): Promise<MailServiceRe
       // Ignore text parse
     }
 
-    if (responseData.status === 'success' || responseData.response === 'Mail Sent' || responseText.includes('Mail Sent')) {
-      return {
-        success: true,
-        message: `Email terkirim ke ${recipient} via Mailketing API.`,
-        data: responseData,
-      };
-    }
-
     if (responseText.includes('<html') || responseText.includes('<!DOCTYPE') || responseContentType.includes('text/html')) {
+      console.groupEnd();
       return {
         success: false,
         message: `Respon Mailketing berupa halaman HTML (${responseStatus}). Pastikan Email Pengirim (${senderEmail}) telah terverifikasi di dashboard Mailketing.co.id.`,
@@ -119,6 +108,7 @@ async function sendDirectMailketing(options: MailOptions): Promise<MailServiceRe
       responseText.includes('User Not Found') ||
       responseText.includes('Wrong API Token')
     ) {
+      console.groupEnd();
       const errDetail = responseData.response || responseData.message || responseText;
       let msg = `Gagal mengirim email via Mailketing: ${errDetail}`;
       if (
@@ -137,6 +127,50 @@ async function sendDirectMailketing(options: MailOptions): Promise<MailServiceRe
       };
     }
 
+    // Direct CC Dispatches if any
+    if (cc && cc.trim()) {
+      const ccAddresses = cc
+        .split(/[,;\n]/)
+        .map((addr) => addr.trim())
+        .filter((addr) => addr && addr.includes('@'));
+
+      for (const ccAddr of ccAddresses) {
+        try {
+          await new Promise((r) => setTimeout(r, 600));
+          const ccParams = new URLSearchParams();
+          ccParams.set('api_token', apiKey);
+          ccParams.set('from_name', senderName);
+          ccParams.set('from_email', senderEmail);
+          ccParams.set('recipient', ccAddr);
+          ccParams.set('subject', `[CC] ${subject}`);
+          ccParams.set(
+            'content',
+            `
+              <div style="background-color: #fefce8; border: 1px solid #fef08a; padding: 12px 18px; border-radius: 10px; margin-bottom: 20px; font-family: Arial, sans-serif; font-size: 13px; color: #854d0e;">
+                📌 <strong>Salinan Tembusan (CC Email):</strong> Email ini dikirimkan sebagai salinan tembusan dokumen resmi kepada Anda. Penerima Utama: <strong>${recipient}</strong>.
+              </div>
+              ${content}
+            `
+          );
+          if (attachmentUrl && attachmentUrl.trim()) {
+            ccParams.set('attach1', attachmentUrl.trim());
+          }
+
+          await fetch(MAILKETING_API_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Accept': 'application/json',
+            },
+            body: ccParams.toString(),
+          });
+        } catch (ccErr) {
+          console.warn('CC fallback error for', ccAddr, ccErr);
+        }
+      }
+    }
+
+    console.groupEnd();
     return {
       success: true,
       message: `Email terkirim ke ${recipient} via Mailketing API.`,

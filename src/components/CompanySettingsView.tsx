@@ -39,6 +39,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
 
   const [emailTemplateTab, setEmailTemplateTab] = useState<'SPH' | 'PKS' | 'Invoice'>('SPH');
   const [testRecipientEmail, setTestRecipientEmail] = useState<string>(profile.mailketingSenderEmail || profile.email || 'alwanemail@gmail.com');
+  const [testCcEmail, setTestCcEmail] = useState<string>(profile.emailTemplates?.defaultCc || '');
   const [testIncludePdf, setTestIncludePdf] = useState<boolean>(true);
   const [testDocType, setTestDocType] = useState<'SPH' | 'PKS' | 'Invoice'>('SPH');
   const [testEmailStatus, setTestEmailStatus] = useState<{
@@ -53,6 +54,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
   const handleTestMailketingConnection = async (typeToTest?: 'SPH' | 'PKS' | 'Invoice') => {
     const selectedType = typeToTest || testDocType || emailTemplateTab || 'SPH';
     const targetRecipient = (testRecipientEmail || profile.mailketingSenderEmail || profile.email || 'alwanemail@gmail.com').trim();
+    const targetCc = testCcEmail.trim();
     
     if (!profile.mailketingApiKey?.trim()) {
       setTestEmailStatus({
@@ -292,6 +294,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
 
       const res = await sendEmail({
         recipient: targetRecipient,
+        cc: targetCc,
         subject: finalSubject,
         content: formattedHtmlContent,
         senderName: profile.name || 'PT. LINTAS DATA INTERNASIONAL',
@@ -304,7 +307,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
         setTestEmailStatus({
           loading: false,
           success: true,
-          message: `✅ Sukses! Email sesuai Template ${selectedType} beserta Lampiran PDF (${generatedPdfFilename}) berhasil dikirim ke ${targetRecipient} via Mailketing Gateway.`,
+          message: `✅ Sukses! Email sesuai Template ${selectedType} beserta Lampiran PDF (${generatedPdfFilename}) berhasil dikirim ke ${targetRecipient}${targetCc ? ` dan CC ke ${targetCc}` : ''} via Mailketing Gateway.`,
           pdfUrl: attachedPdfUrl,
           pdfFilename: generatedPdfFilename,
         });
@@ -1441,9 +1444,9 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-                <div className="sm:col-span-6">
+                <div className="sm:col-span-4">
                   <label className="font-bold text-slate-700 text-[11px] block mb-1">
-                    Email Penerima Uji Coba (Target Inbox)
+                    Email Penerima Utama (Target Inbox) *
                   </label>
                   <input
                     type="email"
@@ -1454,9 +1457,22 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                   />
                 </div>
 
-                <div className="sm:col-span-6">
+                <div className="sm:col-span-4">
                   <label className="font-bold text-slate-700 text-[11px] block mb-1">
-                    Pilih Jenis Template Dokumen yang Diuji
+                    Email Tembusan (CC) <span className="text-slate-400 font-normal text-[10px]">(Opsional, cth: alwanemail@gmail.com)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={testCcEmail}
+                    onChange={(e) => setTestCcEmail(e.target.value)}
+                    placeholder="alwanemail@gmail.com, finance@ldi.co.id"
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-slate-50/50"
+                  />
+                </div>
+
+                <div className="sm:col-span-4">
+                  <label className="font-bold text-slate-700 text-[11px] block mb-1">
+                    Pilih Jenis Template Dokumen
                   </label>
                   <div className="grid grid-cols-3 gap-1.5">
                     <button

@@ -1,12 +1,14 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // In-memory database store for local server API
   const db: {
@@ -303,8 +305,16 @@ async function startServer() {
     });
   });
 
-  // Temporary PDF Document Store for Email Attachments & Direct Downloads
+  // Document PDF in-memory + disk cache store for Mailketing attachments & direct downloads
   const pdfStore = new Map<string, { filename: string; buffer: Buffer; contentType: string }>();
+  const PDF_CACHE_DIR = path.join(process.cwd(), 'uploads', 'pdf_cache');
+  try {
+    if (!fs.existsSync(PDF_CACHE_DIR)) {
+      fs.mkdirSync(PDF_CACHE_DIR, { recursive: true });
+    }
+  } catch (dirErr) {
+    console.warn('Notice creating pdf cache dir:', dirErr);
+  }
 
   app.post('/api/documents/upload-pdf', (req, res) => {
     try {
@@ -314,21 +324,41 @@ async function startServer() {
       }
 
       const fileId = `pdf-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-      const pureBase64 = base64Data.replace(/^data:application\/pdf;base64,/, '').replace(/^data:image\/\w+;base64,/, '');
+      
+      // Clean base64 string accurately (removes data:application/pdf;filename=...;base64, or any data URI prefix)
+      let pureBase64 = String(base64Data);
+      if (pureBase64.includes(',')) {
+        pureBase64 = pureBase64.substring(pureBase64.indexOf(',') + 1);
+      }
+      pureBase64 = pureBase64.trim().replace(/\s/g, '');
       const buffer = Buffer.from(pureBase64, 'base64');
+
+      const isPdfHeader = buffer.length >= 4 && buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46; // %PDF
+      console.log(`[PDF UPLOAD] fileId=${fileId}, size=${buffer.length} bytes, validPdfHeader=${isPdfHeader}`);
 
       const cleanFilename = (filename || 'Dokumen_Resmi_LDI.pdf').replace(/[^a-zA-Z0-9_\-\.]/g, '_');
       const finalFilename = cleanFilename.endsWith('.pdf') ? cleanFilename : `${cleanFilename}.pdf`;
 
-      pdfStore.set(fileId, {
+      const docRecord = {
         filename: finalFilename,
         buffer,
         contentType: 'application/pdf',
-      });
+      };
 
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-      const host = req.get('host');
-      const pdfUrl = `${protocol}://${host}/api/documents/pdf/${fileId}/${finalFilename}`;
+      pdfStore.set(fileId, docRecord);
+
+      // Persist to disk cache
+      try {
+        fs.writeFileSync(path.join(PDF_CACHE_DIR, `${fileId}.pdf`), buffer);
+      } catch (fsErr) {
+        console.warn('Could not write PDF to disk cache:', fsErr);
+      }
+
+      // Determine public domain & protocol
+      const host = req.get('host') || 'e-office.ldi.co.id';
+      const forwardedProto = req.headers['x-forwarded-proto'];
+      const protocol = (host.includes('ldi.co.id') || forwardedProto === 'https' || req.secure) ? 'https' : (forwardedProto || req.protocol);
+      const pdfUrl = `${protocol}://${host}/api/documents/pdf/${fileId}/${encodeURIComponent(finalFilename)}`;
 
       res.json({
         success: true,
@@ -337,13 +367,32 @@ async function startServer() {
         filename: finalFilename,
       });
     } catch (err: any) {
+      console.error('Error in /api/documents/upload-pdf:', err);
       res.status(500).json({ success: false, error: err.message });
     }
   });
 
   app.get('/api/documents/pdf/:fileId/:filename', (req, res) => {
-    const { fileId } = req.params;
-    const stored = pdfStore.get(fileId);
+    const { fileId, filename } = req.params;
+    let stored = pdfStore.get(fileId);
+
+    if (!stored) {
+      const diskPath = path.join(PDF_CACHE_DIR, `${fileId}.pdf`);
+      if (fs.existsSync(diskPath)) {
+        try {
+          const buffer = fs.readFileSync(diskPath);
+          stored = {
+            filename: filename || 'Dokumen_Resmi_LDI.pdf',
+            buffer,
+            contentType: 'application/pdf',
+          };
+          pdfStore.set(fileId, stored);
+        } catch (readErr) {
+          console.warn('Could not read PDF from disk cache:', readErr);
+        }
+      }
+    }
+
     if (!stored) {
       return res.status(404).send('Dokumen PDF tidak ditemukan atau telah kedaluwarsa.');
     }
@@ -351,29 +400,51 @@ async function startServer() {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', '*');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${stored.filename}"`);
-    res.setHeader('Content-Length', stored.buffer.length);
+    res.setHeader('Content-Length', stored.buffer.length.toString());
+    res.setHeader('Accept-Ranges', 'bytes');
     res.send(stored.buffer);
   });
 
   app.head('/api/documents/pdf/:fileId/:filename', (req, res) => {
-    const { fileId } = req.params;
-    const stored = pdfStore.get(fileId);
+    const { fileId, filename } = req.params;
+    let stored = pdfStore.get(fileId);
+
+    if (!stored) {
+      const diskPath = path.join(PDF_CACHE_DIR, `${fileId}.pdf`);
+      if (fs.existsSync(diskPath)) {
+        try {
+          const buffer = fs.readFileSync(diskPath);
+          stored = {
+            filename: filename || 'Dokumen_Resmi_LDI.pdf',
+            buffer,
+            contentType: 'application/pdf',
+          };
+          pdfStore.set(fileId, stored);
+        } catch (readErr) {
+          console.warn('Could not read PDF for HEAD from disk cache:', readErr);
+        }
+      }
+    }
+
     if (!stored) {
       return res.status(404).end();
     }
 
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${stored.filename}"`);
-    res.setHeader('Content-Length', stored.buffer.length);
+    res.setHeader('Content-Length', stored.buffer.length.toString());
+    res.setHeader('Accept-Ranges', 'bytes');
     res.status(200).end();
   });
 
-  // Mailketing Email Dispatcher Helper
+  // Mailketing Email Dispatcher Helper (Using application/x-www-form-urlencoded & reliable CC dispatch)
   async function sendMailketingEmailServer(
     recipient: string,
     subject: string,
@@ -397,31 +468,27 @@ async function startServer() {
     console.log(` - Active API Token : ${activeApiKey ? `${activeApiKey.substring(0, 8)}...` : '(EMPTY)'}`);
 
     try {
-      const jsonBody = {
-        api_token: activeApiKey,
-        api_key: activeApiKey,
-        recipient: recipient,
-        subject: subject,
-        content: content,
-        from_name: senderName,
-        sender_name: senderName,
-        from_email: senderEmail,
-        sender_email: senderEmail,
-        ...(cc && cc.trim() ? { cc: cc.trim() } : {}),
-        ...(attachUrl ? { attach1: attachUrl } : {}),
-      };
+      // Mailketing API v1 MUST use application/x-www-form-urlencoded (URLSearchParams)
+      const formParams = new URLSearchParams();
+      formParams.set('api_token', activeApiKey);
+      formParams.set('from_name', senderName);
+      formParams.set('from_email', senderEmail);
+      formParams.set('recipient', recipient.trim());
+      formParams.set('subject', subject);
+      formParams.set('content', content);
+      if (attachUrl && attachUrl.trim()) {
+        formParams.set('attach1', attachUrl.trim());
+      }
 
-      console.log(`[MAILKETING LOG ${timestamp}] [API REQUEST] Sending HTTP POST to https://api.mailketing.co.id/api/v1/send`);
-      console.log(` - Headers: Content-Type: application/json, Accept: application/json`);
-      console.log(` - Request Body Payload:`, JSON.stringify({ ...jsonBody, api_token: '***HIDDEN***', api_key: '***HIDDEN***' }));
+      console.log(`[MAILKETING LOG ${timestamp}] [API REQUEST] Sending POST (x-www-form-urlencoded) to https://api.mailketing.co.id/api/v1/send`);
 
       const response = await fetch('https://api.mailketing.co.id/api/v1/send', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json',
         },
-        body: JSON.stringify(jsonBody),
+        body: formParams.toString(),
       });
 
       const responseStatusCode = response.status;
@@ -437,13 +504,12 @@ async function startServer() {
         responseJson = JSON.parse(text);
         console.log(` - Parsed JSON Data :`, responseJson);
       } catch (jsonErr) {
-        console.warn(` - [WARNING] Response is NOT a valid JSON string.`);
+        // Non JSON text response
       }
 
       // Check if response is HTML (Error page from Cloudflare or unverified sender email issue)
       if (text.includes('<html') || text.includes('<!DOCTYPE') || text.includes('<!doctype')) {
         console.error(`[MAILKETING LOG ${timestamp}] [ERROR] Received HTML response from Mailketing API instead of JSON.`);
-        console.error(` - Possible Causes: 1) Sender email (${senderEmail}) is not verified in Mailketing Dashboard. 2) API Key is invalid or rate limited.`);
         return {
           success: false,
           error: `Respon Server Mailketing Berupa Halaman HTML/Error (${responseStatusCode}). Pastikan Email Pengirim (${senderEmail}) sudah terverifikasi di Dashboard Mailketing.co.id.`,
@@ -494,46 +560,52 @@ async function startServer() {
 
       console.log(`[MAILKETING LOG ${timestamp}] [SUCCESS] Main email successfully dispatched to ${recipient}`);
 
-      // Dispatch individual copies to CC recipients to guarantee inbox delivery
+      // Dispatch individual copies to CC recipients to guarantee inbox delivery for Gmail/others
       if (cc && cc.trim()) {
         const ccAddresses = cc
-          .split(/[,;]/)
+          .split(/[,;\n]/)
           .map((addr) => addr.trim())
-          .filter((addr) => addr && addr.includes('@') && addr.toLowerCase() !== recipient.toLowerCase());
+          .filter((addr) => addr && addr.includes('@'));
+
+        console.log(`[MAILKETING LOG ${timestamp}] [CC DISPATCH] Dispatching copies to ${ccAddresses.length} address(es):`, ccAddresses);
 
         for (const ccAddr of ccAddresses) {
           try {
-            console.log(`[MAILKETING LOG ${timestamp}] [CC DISPATCH] Dispatching copy to CC address: ${ccAddr}`);
-            const ccJsonBody = {
-              api_token: activeApiKey,
-              api_key: activeApiKey,
-              recipient: ccAddr,
-              subject: `[CC / TEMBUSAN] ${subject}`,
-              content: `
-                <div style="background-color: #fefce8; border: 1px solid #fef08a; padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-family: Arial, sans-serif; font-size: 12px; color: #854d0e;">
-                  📌 <strong>Catatan Tembusan (CC Email):</strong> Email ini dikirimkan sebagai salinan tembusan (CC) kepada Anda untuk arsip & monitoring dokumen resmi. Penerima Utama: <strong>${recipient}</strong>.
+            // Short delay to avoid rate limiting
+            await new Promise((resolve) => setTimeout(resolve, 600));
+
+            const ccFormParams = new URLSearchParams();
+            ccFormParams.set('api_token', activeApiKey);
+            ccFormParams.set('from_name', senderName);
+            ccFormParams.set('from_email', senderEmail);
+            ccFormParams.set('recipient', ccAddr);
+            ccFormParams.set('subject', `[CC] ${subject}`);
+            ccFormParams.set(
+              'content',
+              `
+                <div style="background-color: #fefce8; border: 1px solid #fef08a; padding: 12px 18px; border-radius: 10px; margin-bottom: 20px; font-family: Arial, sans-serif; font-size: 13px; color: #854d0e;">
+                  📌 <strong>Salinan Tembusan (CC Email):</strong> Email ini dikirimkan sebagai salinan tembusan dokumen resmi kepada Anda. Penerima Utama: <strong>${recipient}</strong>.
                 </div>
                 ${content}
-              `,
-              from_name: senderName,
-              sender_name: senderName,
-              from_email: senderEmail,
-              sender_email: senderEmail,
-              ...(attachUrl ? { attach1: attachUrl } : {}),
-            };
+              `
+            );
+            if (attachUrl && attachUrl.trim()) {
+              ccFormParams.set('attach1', attachUrl.trim());
+            }
 
+            console.log(`[MAILKETING LOG ${timestamp}] [CC DISPATCH] Dispatching copy to: ${ccAddr}`);
             const ccRes = await fetch('https://api.mailketing.co.id/api/v1/send', {
               method: 'POST',
               headers: {
-                'Content-Type': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
                 'Accept': 'application/json',
               },
-              body: JSON.stringify(ccJsonBody),
+              body: ccFormParams.toString(),
             });
             const ccText = await ccRes.text();
             console.log(`[MAILKETING LOG ${timestamp}] [CC DISPATCH SUCCESS] Result for ${ccAddr}: ${ccText.substring(0, 150)}`);
           } catch (ccErr: any) {
-            console.warn(`[MAILKETING LOG ${timestamp}] [CC DISPATCH WARNING] Could not dispatch to CC ${ccAddr}: ${ccErr.message}`);
+            console.warn(`[MAILKETING LOG ${timestamp}] [CC DISPATCH WARNING] Could not dispatch to CC ${ccAddr}:`, ccErr.message);
           }
         }
       }

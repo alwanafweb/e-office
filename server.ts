@@ -307,7 +307,7 @@ async function startServer() {
 
   // Document PDF in-memory + disk cache store for Mailketing attachments & direct downloads
   const pdfStore = new Map<string, { filename: string; buffer: Buffer; contentType: string }>();
-  const PDF_CACHE_DIR = path.join(process.cwd(), 'uploads', 'pdf_cache');
+  const PDF_CACHE_DIR = path.join(process.cwd(), 'uploads', 'pdf');
   try {
     if (!fs.existsSync(PDF_CACHE_DIR)) {
       fs.mkdirSync(PDF_CACHE_DIR, { recursive: true });
@@ -316,16 +316,30 @@ async function startServer() {
     console.warn('Notice creating pdf cache dir:', dirErr);
   }
 
+  // Static serving for direct public attachments
+  app.use(
+    '/uploads/pdf',
+    express.static(PDF_CACHE_DIR, {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.pdf')) {
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+        }
+      },
+    })
+  );
+
   app.post('/api/documents/upload-pdf', (req, res) => {
     try {
-      const { filename, base64Data } = req.body || {};
+      const { filename, base64Data, customPublicDomain } = req.body || {};
       if (!base64Data) {
         return res.status(400).json({ success: false, error: 'base64Data is required' });
       }
 
       const fileId = `pdf-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
       
-      // Clean base64 string accurately (removes data:application/pdf;filename=...;base64, or any data URI prefix)
+      // Clean base64 string accurately
       let pureBase64 = String(base64Data);
       if (pureBase64.includes(',')) {
         pureBase64 = pureBase64.substring(pureBase64.indexOf(',') + 1);
@@ -338,6 +352,7 @@ async function startServer() {
 
       const cleanFilename = (filename || 'Dokumen_Resmi_LDI.pdf').replace(/[^a-zA-Z0-9_\-\.]/g, '_');
       const finalFilename = cleanFilename.endsWith('.pdf') ? cleanFilename : `${cleanFilename}.pdf`;
+      const staticDiskFilename = `${fileId}_${finalFilename}`;
 
       const docRecord = {
         filename: finalFilename,
@@ -347,24 +362,27 @@ async function startServer() {
 
       pdfStore.set(fileId, docRecord);
 
-      // Persist to disk cache
+      // Persist to disk cache in uploads/pdf
       try {
+        fs.writeFileSync(path.join(PDF_CACHE_DIR, staticDiskFilename), buffer);
         fs.writeFileSync(path.join(PDF_CACHE_DIR, `${fileId}.pdf`), buffer);
       } catch (fsErr) {
         console.warn('Could not write PDF to disk cache:', fsErr);
       }
 
       // Determine public domain & protocol
-      const publicBaseUrl = (req.body?.customPublicDomain || process.env.PUBLIC_APP_URL || process.env.APP_URL || '').trim();
+      const publicBaseUrl = (customPublicDomain || process.env.PUBLIC_APP_URL || process.env.APP_URL || '').trim();
       let pdfUrl = '';
       if (publicBaseUrl && publicBaseUrl.startsWith('http')) {
-        pdfUrl = `${publicBaseUrl.replace(/\/$/, '')}/api/documents/pdf/${fileId}/${encodeURIComponent(finalFilename)}`;
+        pdfUrl = `${publicBaseUrl.replace(/\/$/, '')}/uploads/pdf/${staticDiskFilename}`;
       } else {
         const host = req.get('host') || 'e-office.ldi.co.id';
         const forwardedProto = req.headers['x-forwarded-proto'];
-        const protocol = (host.includes('ldi.co.id') || forwardedProto === 'https' || req.secure) ? 'https' : (forwardedProto || req.protocol);
-        pdfUrl = `${protocol}://${host}/api/documents/pdf/${fileId}/${encodeURIComponent(finalFilename)}`;
+        const protocol = (host.includes('ldi.co.id') || forwardedProto === 'https' || req.secure) ? 'https' : (forwardedProto || req.protocol || 'https');
+        pdfUrl = `${protocol}://${host}/uploads/pdf/${staticDiskFilename}`;
       }
+
+      console.log(`[PDF UPLOAD SUCCESS] fileId=${fileId}, publicPdfUrl=${pdfUrl}`);
 
       res.json({
         success: true,
@@ -378,8 +396,9 @@ async function startServer() {
     }
   });
 
-  app.get('/api/documents/pdf/:fileId/:filename', (req, res) => {
-    const { fileId, filename } = req.params;
+  const servePdfHandler = (req: express.Request, res: express.Response) => {
+    const fileId = req.params.fileId;
+    const filename = req.params.filename || req.params.fileId;
     let stored = pdfStore.get(fileId);
 
     if (!stored) {
@@ -388,7 +407,7 @@ async function startServer() {
         try {
           const buffer = fs.readFileSync(diskPath);
           stored = {
-            filename: filename || 'Dokumen_Resmi_LDI.pdf',
+            filename: filename.endsWith('.pdf') ? filename : `${filename}.pdf`,
             buffer,
             contentType: 'application/pdf',
           };
@@ -413,43 +432,12 @@ async function startServer() {
     res.setHeader('Content-Length', stored.buffer.length.toString());
     res.setHeader('Accept-Ranges', 'bytes');
     res.send(stored.buffer);
-  });
+  };
 
-  app.head('/api/documents/pdf/:fileId/:filename', (req, res) => {
-    const { fileId, filename } = req.params;
-    let stored = pdfStore.get(fileId);
-
-    if (!stored) {
-      const diskPath = path.join(PDF_CACHE_DIR, `${fileId}.pdf`);
-      if (fs.existsSync(diskPath)) {
-        try {
-          const buffer = fs.readFileSync(diskPath);
-          stored = {
-            filename: filename || 'Dokumen_Resmi_LDI.pdf',
-            buffer,
-            contentType: 'application/pdf',
-          };
-          pdfStore.set(fileId, stored);
-        } catch (readErr) {
-          console.warn('Could not read PDF for HEAD from disk cache:', readErr);
-        }
-      }
-    }
-
-    if (!stored) {
-      return res.status(404).end();
-    }
-
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', '*');
-    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${stored.filename}"`);
-    res.setHeader('Content-Length', stored.buffer.length.toString());
-    res.setHeader('Accept-Ranges', 'bytes');
-    res.status(200).end();
-  });
+  app.get('/api/documents/pdf/:fileId', servePdfHandler);
+  app.get('/api/documents/pdf/:fileId/:filename', servePdfHandler);
+  app.head('/api/documents/pdf/:fileId', (req, res) => res.status(200).setHeader('Content-Type', 'application/pdf').end());
+  app.head('/api/documents/pdf/:fileId/:filename', (req, res) => res.status(200).setHeader('Content-Type', 'application/pdf').end());
 
   // Mailketing Email Dispatcher Helper (Using application/x-www-form-urlencoded & reliable CC dispatch)
   async function sendMailketingEmailServer(

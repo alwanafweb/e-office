@@ -119,28 +119,31 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
     setIsSending(true);
 
     try {
-      // Step 1: Render PDF Attachment Buffer from DOM
-      setSendStep('1/3 Merender Dokumen PDF & Tanda Tangan Digital...');
+      // Step 1: Render 100% exact high-fidelity PDF Buffer
+      setSendStep('1/3 Merender Dokumen PDF Resmi & Tanda Tangan Digital...');
       
       const fileName = `${type}_${docNumber.replace(/[\/\\]/g, '_')}.pdf`;
       let attachedPdfUrl: string | undefined = undefined;
 
-      // Generate actual PDF base64 ensuring 100% exact match with the download view
-      let pdfResult = await generatePdfBase64('printable-document-content', fileName);
+      // Use the high-fidelity unified PDFTemplate generator to guarantee 100% parity
+      let pdfResult = await generateStandaloneDocPdfBase64(type, data, companyProfile, customers, headerMode);
       if (!pdfResult || !pdfResult.base64) {
-        console.info('Using high-fidelity unified PDFTemplate generator for document attachment...');
-        pdfResult = await generateStandaloneDocPdfBase64(type, data, companyProfile, customers, headerMode);
+        console.info('Fallback to on-screen element capture for document attachment...');
+        pdfResult = await generatePdfBase64('printable-document-content', fileName);
       }
 
       if (pdfResult && pdfResult.base64) {
         setSendStep('2/3 Mengunggah Berkas PDF ke Server Gateway LDI...');
         try {
-          const customPublicDomain = companyProfile?.website
-            ? (companyProfile.website.startsWith('http') ? companyProfile.website : `https://${companyProfile.website}`)
-            : undefined;
+          const customPublicDomain =
+            typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost')
+              ? window.location.origin
+              : (companyProfile?.website ? (companyProfile.website.startsWith('http') ? companyProfile.website : `https://${companyProfile.website}`) : undefined);
+
           const uploadRes = await apiUploadPdf(pdfResult.filename, pdfResult.base64, customPublicDomain);
           if (uploadRes && uploadRes.pdfUrl) {
             attachedPdfUrl = uploadRes.pdfUrl;
+            console.log(`[ATTACHMENT READY] Uploaded ${pdfResult.filename} -> ${attachedPdfUrl}`);
           }
         } catch (uploadErr) {
           console.warn('PDF upload warning:', uploadErr);

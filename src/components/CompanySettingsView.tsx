@@ -227,13 +227,15 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
         try {
           const pdfResult = await generateStandaloneDocPdfBase64(selectedType, sampleData, profile);
           if (pdfResult && pdfResult.base64) {
-            const customPublicDomain = profile?.website
-              ? (profile.website.startsWith('http') ? profile.website : `https://${profile.website}`)
-              : undefined;
+            const customPublicDomain =
+              typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost')
+                ? window.location.origin
+                : (profile?.website ? (profile.website.startsWith('http') ? profile.website : `https://${profile.website}`) : undefined);
             const uploadRes = await apiUploadPdf(pdfResult.filename, pdfResult.base64, customPublicDomain);
             if (uploadRes && uploadRes.pdfUrl) {
               attachedPdfUrl = uploadRes.pdfUrl;
               generatedPdfFilename = uploadRes.filename || generatedPdfFilename;
+              console.log(`[TEST EMAIL ATTACHMENT READY] ${uploadRes.filename} -> ${attachedPdfUrl}`);
             }
           }
         } catch (pdfErr) {

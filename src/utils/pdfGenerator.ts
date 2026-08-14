@@ -30,14 +30,14 @@ export const renderTemplateToPdf = async (
 
   // Create temporary container off-screen with exact A4 dimensions
   const container = document.createElement('div');
-  container.style.position = 'fixed';
-  container.style.left = '-9999px';
+  container.style.position = 'absolute';
+  container.style.left = '0';
   container.style.top = '0';
-  container.style.width = '210mm';
-  container.style.minHeight = '297mm';
+  container.style.width = '794px';
+  container.style.minHeight = '1123px';
   container.style.backgroundColor = '#ffffff';
   container.style.color = '#0f172a';
-  container.style.zIndex = '-9999';
+  container.style.zIndex = '-99999';
   container.style.opacity = '1';
   container.style.pointerEvents = 'none';
   container.style.boxSizing = 'border-box';
@@ -57,12 +57,12 @@ export const renderTemplateToPdf = async (
       headerMode,
       showStamp: true,
       showSignatures: true,
-      className: '!shadow-none !border-none !rounded-none !p-8 !m-0 !w-[210mm] !max-w-[210mm]',
+      className: '!shadow-none !border-none !rounded-none !p-8 !m-0 !w-[794px] !max-w-[794px]',
     })
   );
 
   // Wait for React to render DOM and initialize QR Codes
-  await new Promise((resolve) => setTimeout(resolve, 400));
+  await new Promise((resolve) => setTimeout(resolve, 450));
 
   // Wait for all images inside container to finish loading
   const images = container.querySelectorAll('img');
@@ -88,7 +88,7 @@ export const renderTemplateToPdf = async (
       backgroundColor: '#ffffff',
       scrollX: 0,
       scrollY: 0,
-      windowWidth: container.scrollWidth || 800,
+      windowWidth: 1200,
     });
 
     const imgData = canvas.toDataURL('image/jpeg', 0.98);

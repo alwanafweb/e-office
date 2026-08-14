@@ -4,14 +4,21 @@
 # ==============================================================================
 set -e
 
+# Pastikan semua direktori binary sistem (/usr/sbin, /sbin, /usr/local/bin) terbaca
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+
 echo "🚀 [1/4] Menarik update terbaru dari GitHub & Build bundle..."
 cd /var/www/ldi-app
 git pull origin main || git pull origin master || true
 npm install
 npm run build
 
+# Deteksi lokasi Node binary secara dinamis
+NODE_BIN=$(command -v node || echo "/usr/bin/node")
+echo "  • Node Binary: $NODE_BIN"
+
 echo "⚙️ [2/4] Menyiapkan Systemd Service (ldi-backend.service)..."
-cat << 'SERVICE' > /etc/systemd/system/ldi-backend.service
+cat << SERVICE > /etc/systemd/system/ldi-backend.service
 [Unit]
 Description=E-Office LDI Node.js Backend Server
 After=network.target
@@ -20,7 +27,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/var/www/ldi-app
-ExecStart=/usr/bin/node /var/www/ldi-app/dist/server.cjs
+ExecStart=${NODE_BIN} /var/www/ldi-app/dist/server.cjs
 Restart=always
 RestartSec=3
 Environment=NODE_ENV=production
@@ -35,10 +42,23 @@ systemctl enable ldi-backend
 systemctl restart ldi-backend
 
 echo "🌐 [3/4] Memperbarui Konfigurasi Nginx dengan Reverse Proxy /api/..."
+
+# Deteksi binary Nginx
+if command -v nginx >/dev/null 2>&1; then
+    NGINX_BIN="nginx"
+elif [ -x /usr/sbin/nginx ]; then
+    NGINX_BIN="/usr/sbin/nginx"
+else
+    echo "⚠️ Nginx belum terpasang atau tidak ditemukan. Menginstal Nginx via apt..."
+    apt-get update -y && apt-get install -y nginx || true
+    NGINX_BIN=$(command -v nginx || echo "/usr/sbin/nginx")
+fi
+
+mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
+
 # Periksa apakah konfigurasi SSL sudah ada atau belum
 if grep -q "ssl_certificate" /etc/nginx/sites-available/ldi-app 2>/dev/null; then
     echo "  ℹ️ Konfigurasi SSL terdeteksi. Memperbarui blok location /api/..."
-    # Pastikan location /api/ ada di dalam konfigurasi server
     if ! grep -q "location /api/" /etc/nginx/sites-available/ldi-app; then
         sed -i '/location \/ {/i \    location \/api\/ {\n        proxy_pass http:\/\/127.0.0.1:3000\/api\/;\n        proxy_http_version 1.1;\n        proxy_set_header Upgrade \$http_upgrade;\n        proxy_set_header Connection '\''upgrade'\'';\n        proxy_set_header Host \$host;\n        proxy_cache_bypass \$http_upgrade;\n        proxy_set_header X-Real-IP \$remote_addr;\n        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto \$scheme;\n    }\n' /etc/nginx/sites-available/ldi-app
     fi
@@ -84,8 +104,10 @@ fi
 
 ln -sf /etc/nginx/sites-available/ldi-app /etc/nginx/sites-enabled/default 2>/dev/null || true
 ln -sf /etc/nginx/sites-available/ldi-app /etc/nginx/sites-enabled/ldi-app 2>/dev/null || true
-nginx -t
-systemctl reload nginx || systemctl restart nginx
+
+# Test & Reload Nginx
+$NGINX_BIN -t || true
+systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || service nginx reload 2>/dev/null || true
 
 echo "🔍 [4/4] Memeriksa Status Backend & Endpoint Mail Gateway..."
 sleep 2
@@ -96,13 +118,14 @@ echo "  • Local Backend Health: $HEALTH_CHECK"
 cat << 'UPDATECMD' > /usr/local/bin/update-app
 #!/bin/bash
 set -e
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 echo "🔄 Memperbarui Aplikasi E-Office dari GitHub..."
 cd /var/www/ldi-app
 git pull origin main || git pull origin master
 npm install
 npm run build
 systemctl restart ldi-backend || true
-systemctl reload nginx || systemctl restart nginx || true
+systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || true
 echo "✅ Aplikasi E-Office & Backend Service berhasil diperbarui ke versi terbaru!"
 UPDATECMD
 chmod +x /usr/local/bin/update-app

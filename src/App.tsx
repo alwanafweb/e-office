@@ -137,7 +137,26 @@ export default function App() {
   // Load from encrypted storage or seed initial data
   const [companyProfile, setCompanyProfile] = useState<CompanyProfile>(() => {
     const saved = getDecryptedItem<CompanyProfile>('ldi_company_profile');
-    return saved || COMPANY_PROFILE;
+    if (saved) {
+      // Auto sanitize any legacy jagoanserver domains to official e-office.ldi.co.id
+      const sanitizedWebsite = (saved.website && saved.website.toLowerCase().includes('jagoanserver'))
+        ? 'e-office.ldi.co.id'
+        : saved.website || 'e-office.ldi.co.id';
+      
+      const sanitizedTemplates = saved.emailTemplates ? {
+        ...saved.emailTemplates,
+        sphBody: saved.emailTemplates.sphBody?.replace(/jagoanserver\.com/gi, 'e-office.ldi.co.id'),
+        pksBody: saved.emailTemplates.pksBody?.replace(/jagoanserver\.com/gi, 'e-office.ldi.co.id'),
+        invoiceBody: saved.emailTemplates.invoiceBody?.replace(/jagoanserver\.com/gi, 'e-office.ldi.co.id'),
+      } : COMPANY_PROFILE.emailTemplates;
+
+      return {
+        ...saved,
+        website: sanitizedWebsite,
+        emailTemplates: sanitizedTemplates,
+      };
+    }
+    return COMPANY_PROFILE;
   });
 
   // Dynamic update favicon & title in browser tab

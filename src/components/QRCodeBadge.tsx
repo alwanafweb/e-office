@@ -13,10 +13,8 @@ export const QRCodeBadge: React.FC<QRCodeBadgeProps> = ({ docNumber, docType, is
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
-  // Construct absolute verification URL directing user to verification view for this document number
-  const verifyUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}${window.location.pathname}?doc=${encodeURIComponent(docNumber)}`
-    : `https://e-office.ldi.co.id/verify?doc=${encodeURIComponent(docNumber)}`;
+  // Construct absolute verification URL strictly pointing to official e-office.ldi.co.id domain
+  const verifyUrl = `https://e-office.ldi.co.id/verify?doc=${encodeURIComponent(docNumber)}`;
 
   // Fallback API if client-side QR generation takes a moment
   const fallbackQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(verifyUrl)}&color=0f172a&bgcolor=ffffff`;

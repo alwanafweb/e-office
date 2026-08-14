@@ -278,6 +278,7 @@ export default function App() {
   const [previewDoc, setPreviewDoc] = useState<{
     type: 'SPH' | 'PKS' | 'Invoice';
     data: SPH | PKS | Invoice;
+    isPublic?: boolean;
   } | null>(null);
 
   const [preSelectedCustomer, setPreSelectedCustomer] = useState<Customer | null>(null);
@@ -1062,7 +1063,7 @@ export default function App() {
             invoices={invoices}
             companyProfile={companyProfile}
             initialDocQuery={initialVerifyQuery}
-            onPreviewDoc={(type, data) => setPreviewDoc({ type, data })}
+            onPreviewDoc={(type, data) => setPreviewDoc({ type, data, isPublic: true })}
           />
         )}
 
@@ -1127,6 +1128,7 @@ export default function App() {
           data={previewDoc.data}
           companyProfile={companyProfile}
           customers={customers}
+          isPublic={previewDoc.isPublic || !currentUser}
           onClose={() => setPreviewDoc(null)}
           onSignDocument={handleSignDocument}
           onUpdateStatusToSent={handleUpdateStatusToSent}

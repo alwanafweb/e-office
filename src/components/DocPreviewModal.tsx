@@ -13,6 +13,7 @@ interface DocPreviewModalProps {
   data: SPH | PKS | Invoice;
   companyProfile?: CompanyProfile;
   customers?: Customer[];
+  isPublic?: boolean;
   onClose: () => void;
   onSignDocument?: (type: 'SPH' | 'PKS' | 'Invoice', id: string, signatureData: string) => void;
   onUpdateStatusToSent?: (type: 'SPH' | 'PKS' | 'Invoice', id: string) => void;
@@ -26,6 +27,7 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
   data,
   companyProfile,
   customers,
+  isPublic = false,
   onClose,
   onSignDocument,
   onUpdateStatusToSent,
@@ -33,7 +35,13 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
   onConvertToPks,
   onToggleLockDocument,
 }) => {
-  const [docData, setDocData] = useState<SPH | PKS | Invoice>(data);
+  // In public view, documents are always strictly locked
+  const [docData, setDocData] = useState<SPH | PKS | Invoice>(() => {
+    if (isPublic) {
+      return { ...data, isLocked: true };
+    }
+    return data;
+  });
   const [isDownloading, setIsDownloading] = useState(false);
   const [showStamp, setShowStamp] = useState(true);
   const [headerMode, setHeaderMode] = useState<'official' | 'clean'>('official');
@@ -41,6 +49,7 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
   const [isSignModalOpen, setIsSignModalOpen] = useState(false);
   const [signMode, setSignMode] = useState<'upload' | 'draw'>('upload');
   const [tempSignature, setTempSignature] = useState<string>('');
+  const [publicLockAlert, setPublicLockAlert] = useState(false);
 
   const docNumber =
     type === 'SPH'
@@ -56,7 +65,7 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
     setIsDownloading(false);
 
     // Otomatis kunci dokumen saat didownload agar tidak diubah sembarangan
-    if (!docData.isLocked && onToggleLockDocument) {
+    if (!isPublic && !docData.isLocked && onToggleLockDocument) {
       onToggleLockDocument(type, docData.id, true);
       setDocData((prev) => ({ ...prev, isLocked: true }));
     }
@@ -64,6 +73,23 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleLockClick = () => {
+    if (isPublic) {
+      // In public mode, documents CANNOT be unlocked under any circumstances
+      setPublicLockAlert(true);
+      setTimeout(() => setPublicLockAlert(false), 5000);
+      return;
+    }
+
+    if (docData.isLocked) {
+      if (onToggleLockDocument) onToggleLockDocument(type, docData.id, false);
+      setDocData((prev) => ({ ...prev, isLocked: false }));
+    } else {
+      if (onToggleLockDocument) onToggleLockDocument(type, docData.id, true);
+      setDocData((prev) => ({ ...prev, isLocked: true }));
+    }
   };
 
   return (
@@ -76,15 +102,29 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
               Dokumen Resmi {type}
             </span>
             <span className="font-mono text-sm text-blue-200 font-semibold">{docNumber}</span>
+            {isPublic && (
+              <span className="bg-emerald-950 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Lock className="w-3 h-3 text-emerald-400" /> Read-Only Mode
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-            {docData.isLocked ? (
+            {/* Lock Status Button */}
+            {isPublic ? (
               <button
-                onClick={() => {
-                  if (onToggleLockDocument) onToggleLockDocument(type, docData.id, false);
-                  setDocData((prev) => ({ ...prev, isLocked: false }));
-                }}
+                type="button"
+                onClick={handleLockClick}
+                className="flex items-center gap-1.5 bg-rose-950/90 hover:bg-rose-900 text-rose-200 border border-rose-500/50 font-bold text-xs px-3 py-2 rounded-lg shadow transition cursor-pointer"
+                title="Dokumen Resmi Terkunci & Dilindungi oleh Sistem PT. LDI (Akses Publik)"
+              >
+                <Lock className="w-4 h-4 text-rose-400" />
+                <span>Terkunci 🔒 (Dilindungi)</span>
+              </button>
+            ) : docData.isLocked ? (
+              <button
+                type="button"
+                onClick={handleLockClick}
                 className="flex items-center gap-1.5 bg-rose-900/90 hover:bg-rose-800 text-rose-100 border border-rose-600 font-bold text-xs px-3 py-2 rounded-lg shadow transition cursor-pointer"
                 title="Dokumen dalam Status Terkunci (Locked). Klik untuk membuka kunci dokumen."
               >
@@ -93,10 +133,8 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
               </button>
             ) : (
               <button
-                onClick={() => {
-                  if (onToggleLockDocument) onToggleLockDocument(type, docData.id, true);
-                  setDocData((prev) => ({ ...prev, isLocked: true }));
-                }}
+                type="button"
+                onClick={handleLockClick}
                 className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs px-3 py-2 rounded-lg transition cursor-pointer"
                 title="Kunci dokumen agar tidak dapat diubah atau dihapus sembarangan"
               >
@@ -105,64 +143,78 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
               </button>
             )}
 
-            {/* Format Header Toggle: Official vs Clean */}
-            <div className="flex items-center bg-slate-800 p-1 rounded-lg border border-slate-700 text-xs gap-1">
-              <span className="text-[10px] text-slate-400 uppercase font-bold px-1.5 hidden md:inline">Header PDF:</span>
+            {/* Format Header Toggle: Only available for Authenticated Admin */}
+            {!isPublic && (
+              <div className="flex items-center bg-slate-800 p-1 rounded-lg border border-slate-700 text-xs gap-1">
+                <span className="text-[10px] text-slate-400 uppercase font-bold px-1.5 hidden md:inline">Header PDF:</span>
+                <button
+                  type="button"
+                  onClick={() => setHeaderMode('official')}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-bold text-xs transition cursor-pointer ${
+                    headerMode === 'official'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                  }`}
+                  title="Versi Resmi dengan Logo & Kop Surat Alamat Perusahaan"
+                >
+                  <span>Official (Kop Surat)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHeaderMode('clean')}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-bold text-xs transition cursor-pointer ${
+                    headerMode === 'clean'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                  }`}
+                  title="Versi Polos (Clean) tanpa Kop Surat"
+                >
+                  <span>Clean (Polos)</span>
+                </button>
+              </div>
+            )}
+
+            {/* Toggle Stempel: Only available for Authenticated Admin */}
+            {!isPublic && (
+              <label className="flex items-center gap-2 text-xs text-slate-300 font-medium cursor-pointer bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-700 transition">
+                <input
+                  type="checkbox"
+                  checked={showStamp}
+                  onChange={(e) => setShowStamp(e.target.checked)}
+                  className="rounded border-slate-600 text-blue-500 focus:ring-blue-500"
+                />
+                Tampilkan Stempel
+              </label>
+            )}
+
+            {/* Upload TTD Digital: Only available for Authenticated Admin */}
+            {!isPublic && (
               <button
                 type="button"
-                onClick={() => setHeaderMode('official')}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-bold text-xs transition cursor-pointer ${
-                  headerMode === 'official'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
-                }`}
-                title="Versi Resmi dengan Logo & Kop Surat Alamat Perusahaan"
+                onClick={() => setIsSignModalOpen(true)}
+                className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3 py-2 rounded-lg shadow transition cursor-pointer"
+                title="Upload atau Gambar Tanda Tangan Digital pada Dokumen Ini"
               >
-                <span>Official (Kop Surat)</span>
+                <PenTool className="w-4 h-4 text-amber-200" />
+                <span>Upload TTD Digital</span>
               </button>
+            )}
+
+            {/* Kirim Email: Only available for Authenticated Admin */}
+            {!isPublic && (
               <button
                 type="button"
-                onClick={() => setHeaderMode('clean')}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-bold text-xs transition cursor-pointer ${
-                  headerMode === 'clean'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
-                }`}
-                title="Versi Polos (Clean) tanpa Kop Surat"
+                onClick={() => setIsSendEmailOpen(true)}
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3.5 py-2 rounded-lg shadow transition cursor-pointer"
+                title="Kirim PDF Dokumen Ini Langsung ke Email Pelanggan"
               >
-                <span>Clean (Polos)</span>
+                <Mail className="w-4 h-4 text-emerald-200" />
+                <span>Kirim Email</span>
               </button>
-            </div>
-
-            <label className="flex items-center gap-2 text-xs text-slate-300 font-medium cursor-pointer bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-700 transition">
-              <input
-                type="checkbox"
-                checked={showStamp}
-                onChange={(e) => setShowStamp(e.target.checked)}
-                className="rounded border-slate-600 text-blue-500 focus:ring-blue-500"
-              />
-              Tampilkan Stempel
-            </label>
+            )}
 
             <button
-              onClick={() => setIsSignModalOpen(true)}
-              className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3 py-2 rounded-lg shadow transition cursor-pointer"
-              title="Upload atau Gambar Tanda Tangan Digital pada Dokumen Ini"
-            >
-              <PenTool className="w-4 h-4 text-amber-200" />
-              <span>Upload TTD Digital</span>
-            </button>
-
-            <button
-              onClick={() => setIsSendEmailOpen(true)}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3.5 py-2 rounded-lg shadow transition cursor-pointer"
-              title="Kirim PDF Dokumen Ini Langsung ke Email Pelanggan"
-            >
-              <Mail className="w-4 h-4 text-emerald-200" />
-              <span>Kirim Email</span>
-            </button>
-
-            <button
+              type="button"
               onClick={handlePrint}
               className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold px-3 py-2 rounded-lg border border-slate-700 transition cursor-pointer"
             >
@@ -171,6 +223,7 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
             </button>
 
             <button
+              type="button"
               onClick={handleDownloadPdf}
               disabled={isDownloading}
               className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-2 rounded-lg shadow transition disabled:opacity-50 cursor-pointer"
@@ -180,8 +233,9 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
               <span>{isDownloading ? 'Mengunduh PDF...' : 'Unduh PDF'}</span>
             </button>
 
-            {type === 'SPH' && onConvertToInvoice && (
+            {!isPublic && type === 'SPH' && onConvertToInvoice && (
               <button
+                type="button"
                 onClick={() => {
                   onConvertToInvoice(docData as SPH);
                   onClose();
@@ -194,8 +248,9 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
               </button>
             )}
 
-            {type === 'SPH' && onConvertToPks && (
+            {!isPublic && type === 'SPH' && onConvertToPks && (
               <button
+                type="button"
                 onClick={() => {
                   onConvertToPks(docData as SPH);
                   onClose();
@@ -209,6 +264,7 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
             )}
 
             <button
+              type="button"
               onClick={onClose}
               className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
             >
@@ -217,13 +273,40 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
           </div>
         </div>
 
+        {/* Public Lock Alert Banner when user clicks lock button */}
+        {publicLockAlert && (
+          <div className="bg-amber-50 border-b border-amber-300 px-6 py-2.5 flex items-center justify-between text-xs text-amber-900 font-semibold print:hidden animate-fade-in">
+            <div className="flex items-center gap-2">
+              <Lock className="w-4 h-4 text-amber-700 shrink-0" />
+              <span>
+                🔒 <strong>AKSES PUBLIK TERPROTEKSI:</strong> Dokumen resmi PT. LDI ini dilindungi dan dikunci secara permanen pada portal publik. Pembukaan kunci hanya dapat dilakukan melalui Akun Administrator PT. LDI.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPublicLockAlert(false)}
+              className="text-amber-800 hover:text-amber-950 font-bold text-xs"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Lock Status Warning Banner */}
-        {docData.isLocked && (
+        {(isPublic || docData.isLocked) && !publicLockAlert && (
           <div className="bg-rose-50 border-b border-rose-200 px-6 py-2.5 flex items-center justify-between text-xs text-rose-900 font-medium print:hidden">
             <div className="flex items-center gap-2">
               <Lock className="w-4 h-4 text-rose-600 shrink-0" />
               <span>
-                <strong>DOKUMEN DALAM STATUS TERKUNCI (LOCKED):</strong> Dokumen {docNumber} ini telah diterbitkan/didownload. Dokumen ini terlindungi dari perubahan yang tidak disengaja.
+                {isPublic ? (
+                  <>
+                    <strong>DOKUMEN RESMI PT. LDI (TERKUNCI & READ-ONLY):</strong> Dokumen {docNumber} ini sah, terlindungi secara digital, dan terdaftar dalam basis data resmi PT. Lintas Data Internasional.
+                  </>
+                ) : (
+                  <>
+                    <strong>DOKUMEN DALAM STATUS TERKUNCI (LOCKED):</strong> Dokumen {docNumber} ini telah diterbitkan/didownload. Dokumen ini terlindungi dari perubahan yang tidak disengaja.
+                  </>
+                )}
               </span>
             </div>
             <span className="text-[11px] font-mono font-bold bg-rose-100 text-rose-800 px-2.5 py-0.5 rounded-full border border-rose-300 shrink-0">

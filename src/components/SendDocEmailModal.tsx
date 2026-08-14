@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Send, Mail, CheckCircle2, AlertCircle, FileText, Lock, Paperclip, RefreshCw, Copy, Check, Eye } from 'lucide-react';
-import { CompanyProfile, Invoice, PKS, SPH } from '../types';
+import { CompanyProfile, Customer, Invoice, PKS, SPH } from '../types';
 import { formatIDR, formatDateIndonesian } from '../utils/formatters';
 import { exportToPdf, generatePdfBase64, generateStandaloneDocPdfBase64 } from '../utils/pdfGenerator';
 import { sendEmail } from '../api/mailService';
@@ -12,6 +12,8 @@ interface SendDocEmailModalProps {
   type: 'SPH' | 'PKS' | 'Invoice';
   data: SPH | PKS | Invoice;
   companyProfile?: CompanyProfile;
+  customers?: Customer[];
+  headerMode?: 'official' | 'clean';
   onClose: () => void;
   onSuccessSend?: (docType: 'SPH' | 'PKS' | 'Invoice', docId: string, recipientEmail: string) => void;
 }
@@ -21,6 +23,8 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
   type,
   data,
   companyProfile,
+  customers,
+  headerMode = 'official',
   onClose,
   onSuccessSend,
 }) => {
@@ -147,11 +151,11 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
       const fileName = `${type}_${docNumber.replace(/\//g, '_')}.pdf`;
       let attachedPdfUrl: string | undefined = undefined;
 
-      // Generate actual PDF base64 from printable element if present, or fallback to standalone generator
+      // Generate actual PDF base64 ensuring 100% exact match with the download view
       let pdfResult = await generatePdfBase64('printable-document-content', fileName);
       if (!pdfResult || !pdfResult.base64) {
-        console.info('Using high-fidelity programmatic PDF generator for document attachment...');
-        pdfResult = await generateStandaloneDocPdfBase64(type, data, companyProfile);
+        console.info('Using high-fidelity unified PDFTemplate generator for document attachment...');
+        pdfResult = await generateStandaloneDocPdfBase64(type, data, companyProfile, customers, headerMode);
       }
 
       if (pdfResult && pdfResult.base64) {

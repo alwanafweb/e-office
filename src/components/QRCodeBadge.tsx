@@ -7,14 +7,25 @@ interface QRCodeBadgeProps {
   docType: string;
   issueDate: string;
   compact?: boolean;
+  companyWebsite?: string;
+  companyName?: string;
 }
 
-export const QRCodeBadge: React.FC<QRCodeBadgeProps> = ({ docNumber, docType, issueDate, compact = false }) => {
+export const QRCodeBadge: React.FC<QRCodeBadgeProps> = ({
+  docNumber,
+  docType,
+  issueDate,
+  compact = false,
+  companyWebsite,
+  companyName,
+}) => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
-  // Construct absolute verification URL strictly pointing to official e-office.ldi.co.id domain
-  const verifyUrl = `https://e-office.ldi.co.id/verify?doc=${encodeURIComponent(docNumber)}`;
+  // Construct absolute verification URL strictly pointing to official domain
+  const rawDomain = companyWebsite ? companyWebsite.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : 'e-office.ldi.co.id';
+  const domainName = (rawDomain.toLowerCase().includes('jagoan') || rawDomain.toLowerCase().includes('localhost')) ? 'e-office.ldi.co.id' : rawDomain;
+  const verifyUrl = `https://${domainName}/verify?doc=${encodeURIComponent(docNumber)}`;
 
   // Fallback API if client-side QR generation takes a moment
   const fallbackQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(verifyUrl)}&color=0f172a&bgcolor=ffffff`;
@@ -95,8 +106,8 @@ export const QRCodeBadge: React.FC<QRCodeBadgeProps> = ({ docNumber, docType, is
           No: {docNumber}
         </p>
 
-        <p className="text-[10px] text-slate-600 font-medium">
-          Diterbitkan: {issueDate} • PT. LINTAS DATA INTERNASIONAL
+        <p className="text-[10px] text-slate-600 font-medium truncate">
+          Diterbitkan: {issueDate} • {companyName || 'PT. LINTAS DATA INTERNASIONAL'}
         </p>
 
         <p className="text-[9px] text-emerald-700 font-bold flex items-center gap-1 pt-0.5">

@@ -1,10 +1,13 @@
 import React, { useState, useRef } from 'react';
-import { Building, Globe, Mail, Phone, MapPin, CreditCard, ShieldCheck, Save, Check, Upload, Image as ImageIcon, Trash2, Link, FileImage, RotateCcw, PenTool, Plus, Edit3, Star, Copy, PlusCircle, X, Send, Key, RefreshCw } from 'lucide-react';
-import { CompanyProfile } from '../types';
+import { Building, Globe, Mail, Phone, MapPin, CreditCard, ShieldCheck, Save, Check, Upload, Image as ImageIcon, Trash2, Link, FileImage, RotateCcw, PenTool, Plus, Edit3, Star, Copy, PlusCircle, X, Send, Key, RefreshCw, FileText, CheckCircle2, AlertCircle, Paperclip, ExternalLink } from 'lucide-react';
+import { CompanyProfile, Invoice, PKS, SPH } from '../types';
 import { COMPANY_PROFILE } from '../data/initialData';
 import { SignaturePad } from './SignaturePad';
 import { D1ConfigPanel } from './D1ConfigPanel';
 import { sendEmail } from '../api/mailService';
+import { apiUploadPdf } from '../api/client';
+import { generateStandaloneDocPdfBase64 } from '../utils/pdfGenerator';
+import { formatDateIndonesian, formatIDR } from '../utils/formatters';
 
 interface CompanySettingsViewProps {
   companyProfile: CompanyProfile;
@@ -35,28 +38,265 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
   const signatureInputRef = useRef<HTMLInputElement>(null);
 
   const [emailTemplateTab, setEmailTemplateTab] = useState<'SPH' | 'PKS' | 'Invoice'>('SPH');
+  const [testRecipientEmail, setTestRecipientEmail] = useState<string>(profile.mailketingSenderEmail || profile.email || 'alwanemail@gmail.com');
+  const [testIncludePdf, setTestIncludePdf] = useState<boolean>(true);
+  const [testDocType, setTestDocType] = useState<'SPH' | 'PKS' | 'Invoice'>('SPH');
   const [testEmailStatus, setTestEmailStatus] = useState<{
     loading: boolean;
+    step?: string;
     success?: boolean;
     message?: string;
+    pdfUrl?: string;
+    pdfFilename?: string;
   } | null>(null);
 
-  const handleTestMailketingConnection = async () => {
-    setTestEmailStatus({ loading: true });
-    const targetRecipient = profile.mailketingSenderEmail || profile.email || 'alwanemail@gmail.com';
+  const handleTestMailketingConnection = async (typeToTest?: 'SPH' | 'PKS' | 'Invoice') => {
+    const selectedType = typeToTest || testDocType || emailTemplateTab || 'SPH';
+    const targetRecipient = (testRecipientEmail || profile.mailketingSenderEmail || profile.email || 'alwanemail@gmail.com').trim();
+    
+    if (!profile.mailketingApiKey?.trim()) {
+      setTestEmailStatus({
+        loading: false,
+        success: false,
+        message: '❌ Harap isi API Key Mailketing terlebih dahulu sebelum menguji pengiriman email.'
+      });
+      return;
+    }
+
+    setTestEmailStatus({ 
+      loading: true, 
+      step: '1/3 Menyiapkan data template & merender contoh dokumen PDF...' 
+    });
+
     try {
+      const rawDomain = profile.website ? profile.website.replace(/^https?:\/\//, '') : 'e-office.ldi.co.id';
+      const domainName = rawDomain.toLowerCase().includes('jagoanserver') ? 'e-office.ldi.co.id' : rawDomain;
+
+      // Prepare realistic sample document data
+      let sampleData: SPH | PKS | Invoice;
+      let docNumber = '';
+      let customerName = 'PT. Solusi Digital Nusantara';
+      let docDate = formatDateIndonesian(new Date().toISOString().split('T')[0]);
+      let totalAmount = 15000000;
+      let subjectTemplate = '';
+      let bodyTemplate = '';
+
+      if (selectedType === 'SPH') {
+        docNumber = `SPH/${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/LDI-0089`;
+        sampleData = {
+          id: `sample-sph-${Date.now()}`,
+          sphNumber: docNumber,
+          customerId: 'cust-sample-01',
+          customerName,
+          customerEmail: targetRecipient,
+          customerPhone: '081234567890',
+          customerAddress: 'Cyber Building Lt. 8, Jl. Kuningan Barat No. 8, Jakarta Selatan',
+          date: new Date().toISOString().split('T')[0],
+          validityDays: 14,
+          items: [
+            {
+              id: '1',
+              name: 'Dedicated Internet 100 Mbps 1:1 Symmetric (SLA 99.9%)',
+              description: 'Koneksi internet dedicated kecepatan simetris 1:1 tanpa FUP dengan dukungan teknis 24/7.',
+              category: 'Internet Dedicated',
+              qty: 1,
+              unit: 'Bulan',
+              price: 15000000,
+              discount: 0,
+            }
+          ],
+          technicalSpecs: [
+            { title: 'Bandwidth Ratio', value: '1:1 Symmetric' },
+            { title: 'SLA Guarantee', value: '99.9%' }
+          ],
+          termsAndConditions: [
+            'Harga belum termasuk PPN 11%',
+            'Pembayaran tagihan jatuh tempo 14 hari kalender sejak invoice diterbitkan'
+          ],
+          subtotal: 15000000,
+          discountTotal: 0,
+          taxPercent: 11,
+          taxAmount: 1650000,
+          grandTotal: 16650000,
+          notes: 'Biaya instalasi & setup perangkat router mikrotik digratiskan.',
+          status: 'Dikirim',
+          isLocked: true,
+        };
+        subjectTemplate = profile.emailTemplates?.sphSubject || `[PT. LDI] Surat Penawaran Harga {DOC_NUMBER} - {CUSTOMER_NAME}`;
+        bodyTemplate = profile.emailTemplates?.sphBody || `Kepada Yth. Manajemen {CUSTOMER_NAME},\n\nTerlampir kami sampaikan Surat Penawaran Harga {DOC_NUMBER} dari PT. LINTAS DATA INTERNASIONAL untuk pertimbangan kerja sama layanan internet & jaringan.\n\nTotal Nilai: {TOTAL_AMOUNT}\nTanggal: {DOC_DATE}\n\nSilakan periksa berkas PDF terlampir untuk rincian penawaran resmi.`;
+      } else if (selectedType === 'PKS') {
+        docNumber = `PKS/${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/LDI-0052`;
+        sampleData = {
+          id: `sample-pks-${Date.now()}`,
+          pksNumber: docNumber,
+          customerId: 'cust-sample-01',
+          customerName,
+          customerRepresentative: 'Bapak Hendra Wijaya, S.Kom',
+          customerRepPosition: 'Head of IT & Infrastructure',
+          customerAddress: 'Cyber Building Lt. 8, Jl. Kuningan Barat No. 8, Jakarta Selatan',
+          startDate: new Date().toISOString().split('T')[0],
+          endDate: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
+          contractDurationMonths: 12,
+          serviceItems: [
+            {
+              id: '1',
+              name: 'Dedicated Internet 100 Mbps Corporate Fiber Optic',
+              description: 'Layanan internet dedicated simetris 100 Mbps.',
+              category: 'Internet Dedicated',
+              qty: 1,
+              unit: 'Bulan',
+              price: 15000000,
+              discount: 0,
+            }
+          ],
+          monthlyValue: 15000000,
+          totalContractValue: 180000000,
+          slaPercent: 99.9,
+          clauses: [],
+          status: 'Aktif',
+          party1Signed: true,
+          party1SignerName: profile.directorName || 'Direktur Utama LDI',
+          party1SignerPosition: 'Direktur Utama',
+          party2Signed: false,
+          party2SignerName: 'Bapak Hendra Wijaya, S.Kom',
+          party2SignerPosition: 'Head of IT',
+          isLocked: true,
+        };
+        subjectTemplate = profile.emailTemplates?.pksSubject || `[PT. LDI] Dokumen Perjanjian Kerja Sama (PKS) {DOC_NUMBER} - {CUSTOMER_NAME}`;
+        bodyTemplate = profile.emailTemplates?.pksBody || `Kepada Yth. Tim Legal & Manajemen {CUSTOMER_NAME},\n\nBersama ini kami kirimkan Dokumen Perjanjian Kerja Sama (PKS) {DOC_NUMBER} antara PT. LINTAS DATA INTERNASIONAL dan {CUSTOMER_NAME}.\n\nTotal Nilai Kontrak: {TOTAL_AMOUNT}\nPeriode: {DOC_DATE}\n\nDokumen PDF resmi bertanda tangan digital dapat diunduh pada lampiran email ini.`;
+      } else {
+        docNumber = `INV/${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/LDI-0129`;
+        sampleData = {
+          id: `sample-inv-${Date.now()}`,
+          invoiceNumber: docNumber,
+          customerId: 'cust-sample-01',
+          customerName,
+          customerEmail: targetRecipient,
+          customerPhone: '081234567890',
+          customerAddress: 'Cyber Building Lt. 8, Jl. Kuningan Barat No. 8, Jakarta Selatan',
+          issueDate: new Date().toISOString().split('T')[0],
+          dueDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
+          items: [
+            {
+              id: '1',
+              name: 'Tagihan Layanan Internet Dedicated Corporate Periode Bulan Berjalan',
+              description: 'Tagihan bulanan layanan dedicated internet korporat.',
+              category: 'Internet Dedicated',
+              qty: 1,
+              unit: 'Bulan',
+              price: 15000000,
+              discount: 0,
+            }
+          ],
+          subtotal: 15000000,
+          discountTotal: 0,
+          taxPercent: 11,
+          taxAmount: 1650000,
+          grandTotal: 16650000,
+          paidAmount: 0,
+          status: 'Belum Bayar',
+          billingType: 'monthly',
+          bankInfo: {
+            bankName: profile.bankDetails?.[0]?.bankName || 'Bank Central Asia (BCA)',
+            accountNumber: profile.bankDetails?.[0]?.accountNumber || '1234567890',
+            accountHolder: profile.bankDetails?.[0]?.accountHolder || profile.legalName || 'PT. LINTAS DATA INTERNASIONAL',
+          },
+          isLocked: true,
+        };
+        subjectTemplate = profile.emailTemplates?.invoiceSubject || `[PT. LDI] Tagihan Resmi Invoice #{DOC_NUMBER} - {CUSTOMER_NAME}`;
+        bodyTemplate = profile.emailTemplates?.invoiceBody || `Kepada Yth. Bagian Keuangan {CUSTOMER_NAME},\n\nBerikut kami sampaikan Invoice Tagihan Resmi #{DOC_NUMBER} dari PT. LINTAS DATA INTERNASIONAL.\n\nTotal Tagihan: {TOTAL_AMOUNT}\nTanggal Terbit: {DOC_DATE}\n\nSilakan unduh dokumen PDF terlampir untuk petunjuk pembayaran dan nomor rekening resmi.`;
+      }
+
+      // Replace placeholders in subject and body
+      const finalSubject = subjectTemplate
+        .replace(/\{DOC_NUMBER\}/g, docNumber)
+        .replace(/\{CUSTOMER_NAME\}/g, customerName)
+        .replace(/\{DOC_DATE\}/g, docDate)
+        .replace(/\{TOTAL_AMOUNT\}/g, formatIDR(totalAmount))
+        .replace(/\{PHONE\}/g, profile.whatsapp || profile.phone || '087777040496');
+
+      const finalBodyText = bodyTemplate
+        .replace(/\{DOC_NUMBER\}/g, docNumber)
+        .replace(/\{CUSTOMER_NAME\}/g, customerName)
+        .replace(/\{DOC_DATE\}/g, docDate)
+        .replace(/\{TOTAL_AMOUNT\}/g, formatIDR(totalAmount))
+        .replace(/\{PHONE\}/g, profile.whatsapp || profile.phone || '087777040496');
+
+      let attachedPdfUrl: string | undefined = undefined;
+      let generatedPdfFilename = `${selectedType}_${docNumber.replace(/[\/\\]/g, '_')}.pdf`;
+
+      // Step 2: Auto Generate Official Sample PDF and Upload to Gateway
+      if (testIncludePdf) {
+        setTestEmailStatus({ 
+          loading: true, 
+          step: `2/3 Mengunggah Berkas PDF Resmi Contoh (${generatedPdfFilename}) ke Gateway Server...` 
+        });
+
+        try {
+          const pdfResult = await generateStandaloneDocPdfBase64(selectedType, sampleData, profile);
+          if (pdfResult && pdfResult.base64) {
+            const uploadRes = await apiUploadPdf(pdfResult.filename, pdfResult.base64);
+            if (uploadRes && uploadRes.pdfUrl) {
+              attachedPdfUrl = uploadRes.pdfUrl;
+              generatedPdfFilename = uploadRes.filename || generatedPdfFilename;
+            }
+          }
+        } catch (pdfErr) {
+          console.warn('Sample PDF generation/upload notice:', pdfErr);
+        }
+      }
+
+      // Step 3: Send via Mailketing API
+      setTestEmailStatus({ 
+        loading: true, 
+        step: `3/3 Mengirimkan Email Template ${selectedType} ke ${targetRecipient} via Mailketing API...` 
+      });
+
+      const formattedHtmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; color: #0f172a;">
+          <div style="background-color: #0f172a; padding: 24px; text-align: center; color: #ffffff;">
+            <h2 style="margin: 0; font-size: 20px; text-transform: uppercase; letter-spacing: 1px; color: #38bdf8;">${profile.name || 'PT. LINTAS DATA INTERNASIONAL'}</h2>
+            <p style="margin: 4px 0 0 0; font-size: 12px; color: #94a3b8;">Pengiriman Dokumen Resmi ${selectedType} (${docNumber})</p>
+          </div>
+          <div style="padding: 24px;">
+            <div style="font-size: 13px; line-height: 1.6; color: #334155;">
+              ${finalBodyText.replace(/\n/g, '<br/>')}
+            </div>
+
+            ${attachedPdfUrl ? `
+              <div style="background-color: #f0f9ff; border: 2px solid #0284c7; border-radius: 12px; padding: 18px; margin: 24px 0; text-align: center;">
+                <p style="margin: 0 0 8px 0; font-size: 13px; font-weight: bold; color: #0369a1;">📄 Lampiran Dokumen PDF Resmi Terlampir</p>
+                <p style="margin: 0 0 14px 0; font-size: 11px; color: #64748b; font-family: monospace;">${generatedPdfFilename}</p>
+                <a href="${attachedPdfUrl}" target="_blank" style="background-color: #0284c7; color: #ffffff; padding: 11px 22px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 13px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                  📥 Unduh Berkas PDF Dokumen (${selectedType})
+                </a>
+                <p style="margin: 12px 0 0 0; font-size: 10px; color: #64748b;">Dokumen ini telah ditandatangani dan diverifikasi secara digital oleh PT. LDI.</p>
+              </div>
+            ` : ''}
+
+            <div style="background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 14px; margin-top: 16px; font-size: 12px; color: #475569;">
+              <p style="margin: 0 0 4px 0; font-weight: bold; color: #0f172a;">🛡️ Verifikasi Keaslian Dokumen:</p>
+              <p style="margin: 0;">Anda juga dapat memverifikasi otentisitas dokumen ini secara langsung via Portal Keaslian PT. LDI:<br/>
+              <a href="https://${domainName}/verify?doc=${encodeURIComponent(docNumber)}" style="color: #0284c7; font-weight: bold; text-decoration: underline;">
+                https://${domainName}/verify?doc=${encodeURIComponent(docNumber)}
+              </a></p>
+            </div>
+          </div>
+
+          <div style="background-color: #f1f5f9; padding: 16px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0;">
+            Email ini dikirim secara otomatis oleh Mailketing Gateway ${profile.name || 'PT. LINTAS DATA INTERNASIONAL'}.<br/>
+            &copy; ${new Date().getFullYear()} ${profile.name || 'PT. LINTAS DATA INTERNASIONAL'}. All rights reserved.
+          </div>
+        </div>
+      `;
+
       const res = await sendEmail({
         recipient: targetRecipient,
-        subject: '[e-Office LDI] Uji Coba Koneksi Gateway Mailketing',
-        content: `
-          <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #38bdf8; border-radius: 12px; background-color: #f0f9ff; color: #0c4a6e;">
-            <h3 style="margin-top: 0; color: #0369a1;">✅ Tes Koneksi Email Gateway Berhasil!</h3>
-            <p>Pesan ini mengonfirmasi bahwa API Key Mailketing (<code>${(profile.mailketingApiKey || '').slice(0, 8)}...</code>) yang terpasang di <strong>Pengaturan Perusahaan e-Office LDI</strong> aktif dan siap digunakan untuk pengiriman SPH, PKS, dan Invoice.</p>
-            <p style="font-size: 11px; color: #64748b; margin-bottom: 0;">Dikirim pada: ${new Date().toLocaleString('id-ID')}</p>
-          </div>
-        `,
+        subject: finalSubject,
+        content: formattedHtmlContent,
         senderName: profile.name || 'PT. LINTAS DATA INTERNASIONAL',
         senderEmail: profile.mailketingSenderEmail || profile.email || 'alwanemail@gmail.com',
+        attachmentUrl: attachedPdfUrl,
         mailketingApiKey: profile.mailketingApiKey,
       });
 
@@ -64,7 +304,9 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
         setTestEmailStatus({
           loading: false,
           success: true,
-          message: `✅ Berhasil! Email tes terkirim ke ${targetRecipient} via Mailketing API.`
+          message: `✅ Sukses! Email sesuai Template ${selectedType} beserta Lampiran PDF (${generatedPdfFilename}) berhasil dikirim ke ${targetRecipient} via Mailketing Gateway.`,
+          pdfUrl: attachedPdfUrl,
+          pdfFilename: generatedPdfFilename,
         });
       } else {
         setTestEmailStatus({
@@ -77,7 +319,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
       setTestEmailStatus({
         loading: false,
         success: false,
-        message: `❌ Error: ${err.message || 'Gagal menguji koneksi.'}`
+        message: `❌ Error: ${err.message || 'Gagal menguji pengiriman email template.'}`
       });
     }
   };
@@ -1181,37 +1423,155 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-              <p className="text-[11px] text-slate-500">
-                API Key ini digunakan untuk mengirimkan Invoice, PKS, SPH, dan Kode OTP secara otomatis ke email pelanggan.
-              </p>
-
-              <button
-                type="button"
-                onClick={handleTestMailketingConnection}
-                disabled={testEmailStatus?.loading}
-                className="bg-blue-700 hover:bg-blue-800 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs flex items-center gap-1.5 shadow-sm transition disabled:opacity-50 cursor-pointer"
-              >
-                {testEmailStatus?.loading ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Send className="w-3.5 h-3.5" />
-                )}
-                <span>Uji Koneksi Email</span>
-              </button>
-            </div>
-
-            {testEmailStatus?.message && (
-              <div
-                className={`p-3 rounded-lg text-xs font-semibold ${
-                  testEmailStatus.success
-                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                    : 'bg-red-50 text-red-800 border border-red-200'
-                }`}
-              >
-                {testEmailStatus.message}
+            {/* ENHANCED TEST EMAIL CONTROLLER */}
+            <div className="bg-white border border-blue-200 rounded-xl p-4 space-y-3 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                <div>
+                  <h5 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                    <Send className="w-3.5 h-3.5 text-blue-600" />
+                    Uji Kirim Email Sesuai Template Dokumen & Lampiran PDF
+                  </h5>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Uji coba pengiriman nyata ke inbox menggunakan template aktif dan berkas PDF berstempel resmi.
+                  </p>
+                </div>
+                <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-blue-50 text-blue-800 rounded-md border border-blue-200 self-start sm:self-auto">
+                  LIVE TESTER
+                </span>
               </div>
-            )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                <div className="sm:col-span-6">
+                  <label className="font-bold text-slate-700 text-[11px] block mb-1">
+                    Email Penerima Uji Coba (Target Inbox)
+                  </label>
+                  <input
+                    type="email"
+                    value={testRecipientEmail}
+                    onChange={(e) => setTestRecipientEmail(e.target.value)}
+                    placeholder="alwanemail@gmail.com"
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-slate-50/50"
+                  />
+                </div>
+
+                <div className="sm:col-span-6">
+                  <label className="font-bold text-slate-700 text-[11px] block mb-1">
+                    Pilih Jenis Template Dokumen yang Diuji
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setTestDocType('SPH')}
+                      className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border transition text-center ${
+                        testDocType === 'SPH'
+                          ? 'bg-blue-900 text-white border-blue-900 shadow-xs'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      📄 SPH
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTestDocType('PKS')}
+                      className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border transition text-center ${
+                        testDocType === 'PKS'
+                          ? 'bg-blue-900 text-white border-blue-900 shadow-xs'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      📑 PKS
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTestDocType('Invoice')}
+                      className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border transition text-center ${
+                        testDocType === 'Invoice'
+                          ? 'bg-blue-900 text-white border-blue-900 shadow-xs'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      💳 Invoice
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 border-t border-slate-100">
+                <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] text-slate-700 font-semibold">
+                  <input
+                    type="checkbox"
+                    checked={testIncludePdf}
+                    onChange={(e) => setTestIncludePdf(e.target.checked)}
+                    className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                  />
+                  <Paperclip className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Sertakan Contoh Lampiran Berkas PDF Resmi (Auto-Generated PDF)</span>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => handleTestMailketingConnection(testDocType)}
+                  disabled={testEmailStatus?.loading}
+                  className="bg-blue-700 hover:bg-blue-800 text-white font-bold px-4 py-2 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50 cursor-pointer shrink-0"
+                >
+                  {testEmailStatus?.loading ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Memproses Pengiriman...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5 text-blue-200" />
+                      <span>Kirim Email Uji Coba ({testDocType})</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {testEmailStatus?.loading && testEmailStatus.step && (
+                <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs font-semibold text-blue-900 flex items-center gap-2 animate-pulse">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                  <span>{testEmailStatus.step}</span>
+                </div>
+              )}
+
+              {testEmailStatus?.message && !testEmailStatus.loading && (
+                <div
+                  className={`p-3.5 rounded-xl text-xs space-y-2 ${
+                    testEmailStatus.success
+                      ? 'bg-emerald-50 text-emerald-900 border border-emerald-300'
+                      : 'bg-red-50 text-red-900 border border-red-300'
+                  }`}
+                >
+                  <p className="font-bold flex items-center gap-1.5">
+                    {testEmailStatus.success ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                    )}
+                    <span>{testEmailStatus.message}</span>
+                  </p>
+
+                  {testEmailStatus.pdfUrl && (
+                    <div className="bg-white/80 border border-emerald-200 rounded-lg p-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                      <span className="font-mono text-emerald-800 font-bold flex items-center gap-1">
+                        <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                        Lampiran PDF: {testEmailStatus.pdfFilename}
+                      </span>
+                      <a
+                        href={testEmailStatus.pdfUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-2.5 py-1 rounded-md text-[11px] flex items-center gap-1 shadow-xs transition"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        Buka / Unduh Berkas PDF
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Tabs for SPH, PKS, Invoice */}

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { X, Send, Mail, CheckCircle2, AlertCircle, FileText, Lock, Paperclip, RefreshCw, Copy, Check, Eye } from 'lucide-react';
 import { CompanyProfile, Invoice, PKS, SPH } from '../types';
 import { formatIDR, formatDateIndonesian } from '../utils/formatters';
-import { exportToPdf, generatePdfBase64 } from '../utils/pdfGenerator';
+import { exportToPdf, generatePdfBase64, generateStandaloneDocPdfBase64 } from '../utils/pdfGenerator';
 import { sendEmail } from '../api/mailService';
 import { apiUploadPdf } from '../api/client';
 import { EmailPreviewModal } from './EmailPreviewModal';
@@ -147,8 +147,13 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
       const fileName = `${type}_${docNumber.replace(/\//g, '_')}.pdf`;
       let attachedPdfUrl: string | undefined = undefined;
 
-      // Generate actual PDF base64 from printable element if present
-      const pdfResult = await generatePdfBase64('printable-document-content', fileName);
+      // Generate actual PDF base64 from printable element if present, or fallback to standalone generator
+      let pdfResult = await generatePdfBase64('printable-document-content', fileName);
+      if (!pdfResult || !pdfResult.base64) {
+        console.info('Using high-fidelity programmatic PDF generator for document attachment...');
+        pdfResult = await generateStandaloneDocPdfBase64(type, data, companyProfile);
+      }
+
       if (pdfResult && pdfResult.base64) {
         setSendStep('2/3 Mengunggah Berkas PDF ke Server Gateway LDI...');
         try {

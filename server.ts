@@ -348,10 +348,29 @@ async function startServer() {
       return res.status(404).send('Dokumen PDF tidak ditemukan atau telah kedaluwarsa.');
     }
 
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${stored.filename}"`);
     res.setHeader('Content-Length', stored.buffer.length);
     res.send(stored.buffer);
+  });
+
+  app.head('/api/documents/pdf/:fileId/:filename', (req, res) => {
+    const { fileId } = req.params;
+    const stored = pdfStore.get(fileId);
+    if (!stored) {
+      return res.status(404).end();
+    }
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${stored.filename}"`);
+    res.setHeader('Content-Length', stored.buffer.length);
+    res.status(200).end();
   });
 
   // Mailketing Email Dispatcher Helper

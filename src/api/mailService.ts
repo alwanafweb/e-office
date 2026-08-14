@@ -5,6 +5,12 @@
 
 import { getWorkerUrl } from './client';
 
+export interface EmailAttachment {
+  filename: string;
+  content: string; // base64 string or data uri
+  contentType?: string;
+}
+
 export interface MailOptions {
   recipient: string;
   cc?: string;
@@ -13,6 +19,9 @@ export interface MailOptions {
   senderName?: string;
   senderEmail?: string;
   attachmentUrl?: string;
+  attachments?: EmailAttachment[];
+  pdfBase64?: string;
+  pdfFilename?: string;
   mailketingApiKey?: string;
 }
 
@@ -203,6 +212,9 @@ export async function sendEmail(options: MailOptions): Promise<MailServiceResult
     senderName = 'PT. LINTAS DATA INTERNASIONAL',
     senderEmail = 'alwanemail@gmail.com',
     attachmentUrl,
+    attachments,
+    pdfBase64,
+    pdfFilename,
     mailketingApiKey,
   } = options;
 
@@ -223,6 +235,9 @@ export async function sendEmail(options: MailOptions): Promise<MailServiceResult
         senderName,
         senderEmail,
         attachmentUrl,
+        attachments,
+        pdfBase64,
+        pdfFilename,
         mailketingApiKey,
       }),
     });

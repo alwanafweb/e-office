@@ -217,6 +217,8 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
       let attachedPdfUrl: string | undefined = undefined;
       let generatedPdfFilename = `${selectedType}_${docNumber.replace(/[\/\\]/g, '_')}.pdf`;
 
+      let testPdfBase64: string | undefined = undefined;
+
       // Step 2: Auto Generate Official Sample PDF and Upload to Gateway
       if (testIncludePdf) {
         setTestEmailStatus({ 
@@ -227,6 +229,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
         try {
           const pdfResult = await generateStandaloneDocPdfBase64(selectedType, sampleData, profile);
           if (pdfResult && pdfResult.base64) {
+            testPdfBase64 = pdfResult.base64;
             const customPublicDomain =
               typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost')
                 ? window.location.origin
@@ -268,6 +271,17 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
         senderName: profile.name || 'PT. LINTAS DATA INTERNASIONAL',
         senderEmail: profile.mailketingSenderEmail || profile.email || 'alwanemail@gmail.com',
         attachmentUrl: attachedPdfUrl,
+        attachments: testPdfBase64
+          ? [
+              {
+                filename: generatedPdfFilename,
+                content: testPdfBase64,
+                contentType: 'application/pdf',
+              },
+            ]
+          : undefined,
+        pdfBase64: testPdfBase64,
+        pdfFilename: generatedPdfFilename,
         mailketingApiKey: profile.mailketingApiKey,
       });
 

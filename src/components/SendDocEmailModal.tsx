@@ -172,6 +172,17 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
         senderName: companyProfile?.name || 'PT. LINTAS DATA INTERNASIONAL',
         senderEmail: companyProfile?.mailketingSenderEmail || companyProfile?.email || 'admin@ldi.co.id',
         attachmentUrl: attachedPdfUrl,
+        attachments: pdfResult?.base64
+          ? [
+              {
+                filename: fileName,
+                content: pdfResult.base64,
+                contentType: 'application/pdf',
+              },
+            ]
+          : undefined,
+        pdfBase64: pdfResult?.base64,
+        pdfFilename: fileName,
         mailketingApiKey: companyProfile?.mailketingApiKey,
       });
 

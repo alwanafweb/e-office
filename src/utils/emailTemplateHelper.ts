@@ -536,33 +536,27 @@ export function buildFullEmailHtml(params: {
                   : ''
               }
 
-              ${
-                attachedPdfUrl
-                  ? `
-                <!-- Direct Attachment Action Card -->
-                <div style="background-color: #f0f9ff; border: 2px solid #0284c7; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: center;">
-                  <p style="margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #0369a1;">
-                    📄 Lampiran Berkas PDF Resmi Terlampir
-                  </p>
-                  <p style="margin: 0 0 16px 0; font-size: 11px; color: #64748b; font-family: monospace;">
-                    ${cleanFilename}
-                  </p>
-                  <table border="0" cellpadding="0" cellspacing="0" align="center">
-                    <tr>
-                      <td align="center" style="border-radius: 8px; background-color: #0284c7;">
-                        <a href="${attachedPdfUrl}" target="_blank" style="font-size: 13px; font-weight: bold; color: #ffffff; text-decoration: none; padding: 12px 26px; border-radius: 8px; display: inline-block; font-family: sans-serif;">
-                          📥 Unduh Berkas PDF Dokumen (${type})
-                        </a>
-                      </td>
-                    </tr>
-                  </table>
-                  <p style="margin: 14px 0 0 0; font-size: 11px; color: #64748b;">
-                    Dokumen ini sah dan telah diverifikasi secara digital oleh ${meta.companyName}.
-                  </p>
-                </div>
-              `
-                  : ''
-              }
+              <!-- Direct Attachment Action Card (Always included to match Email Preview) -->
+              <div style="background-color: #f0f9ff; border: 2px solid #0284c7; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: center;">
+                <p style="margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #0369a1;">
+                  📎 Lampiran Dokumen PDF Resmi Terlampir
+                </p>
+                <p style="margin: 0 0 16px 0; font-size: 11px; color: #64748b; font-family: monospace;">
+                  ${cleanFilename}
+                </p>
+                <table border="0" cellpadding="0" cellspacing="0" align="center">
+                  <tr>
+                    <td align="center" style="border-radius: 8px; background-color: #0284c7;">
+                      <a href="${attachedPdfUrl || meta.verifyUrl || '#'}" target="_blank" rel="noopener noreferrer" style="font-size: 13px; font-weight: bold; color: #ffffff; text-decoration: none; padding: 12px 26px; border-radius: 8px; display: inline-block; font-family: sans-serif;">
+                        📥 Unduh Berkas PDF Dokumen (${type})
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin: 14px 0 0 0; font-size: 11px; color: #64748b;">
+                  Dokumen ini telah ditandatangani dan diverifikasi secara digital oleh ${meta.companyName}.
+                </p>
+              </div>
 
               <!-- Verification Box -->
               <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 14px; margin-top: 18px; font-size: 12px; color: #475569;">

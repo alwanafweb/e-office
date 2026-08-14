@@ -133,6 +133,23 @@ async function startServer() {
     res.json(db.invoices);
   });
 
+  // Status endpoint for Cronjob (defined before /api/invoices/:id to avoid parameter shadowing)
+  app.get('/api/invoices/recurring-status', (req, res) => {
+    const monthlyList = db.invoices.filter((inv: any) => inv.billingType === 'monthly' || inv.billingType === 'Bulanan' || inv.autoSendMonthly === true);
+    
+    const now = new Date();
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const nextScheduledDate = `${nextMonth.getDate()} ${nextMonth.toLocaleString('id-ID', { month: 'long' })} ${nextMonth.getFullYear()}`;
+
+    res.json({
+      success: true,
+      totalMonthlyInvoices: monthlyList.length,
+      lastCronRunTime: lastCronRunTime || 'Belum pernah dijalankan sejak server restart',
+      nextScheduledDate,
+      recurringInvoices: monthlyList,
+    });
+  });
+
   app.get('/api/invoices/:id', (req, res) => {
     const found = db.invoices.find((i: any) => i.id === req.params.id || i.invoiceNumber === req.params.id);
     if (!found) return res.status(404).json({ error: 'Invoice not found' });
@@ -286,23 +303,6 @@ async function startServer() {
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
-  });
-
-  // Status endpoint for Cronjob
-  app.get('/api/invoices/recurring-status', (req, res) => {
-    const monthlyList = db.invoices.filter((inv: any) => inv.billingType === 'monthly' || inv.billingType === 'Bulanan' || inv.autoSendMonthly === true);
-    
-    const now = new Date();
-    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const nextScheduledDate = `${nextMonth.getDate()} ${nextMonth.toLocaleString('id-ID', { month: 'long' })} ${nextMonth.getFullYear()}`;
-
-    res.json({
-      success: true,
-      totalMonthlyInvoices: monthlyList.length,
-      lastCronRunTime: lastCronRunTime || 'Belum pernah dijalankan sejak server restart',
-      nextScheduledDate,
-      recurringInvoices: monthlyList,
-    });
   });
 
   // Document PDF in-memory + disk cache store for Mailketing attachments & direct downloads
@@ -656,27 +656,36 @@ async function startServer() {
         finalContent = finalContent.split(attachUrl).join(finalAttachUrl);
       }
 
-      // If we have a direct attachment URL and the email body doesn't have the download button yet, append a beautiful download card
-      if (finalAttachUrl && !finalContent.includes(finalAttachUrl)) {
+      // If the email has placeholder or empty download button href, update it to finalAttachUrl
+      if (finalAttachUrl) {
+        finalContent = finalContent.replace(
+          /href=["'](#[^"']*|DOWNLOAD_PDF_URL_PLACEHOLDER|javascript:[^"']*)["']([^>]*>[\s\S]*?Unduh Berkas PDF Dokumen)/gi,
+          `href="${finalAttachUrl}"$2`
+        );
+      }
+
+      // If the email body doesn't have the attachment card or download link yet, append the official attachment card
+      if (finalAttachUrl && !finalContent.includes('Unduh Berkas PDF Dokumen') && !finalContent.includes(finalAttachUrl)) {
         const attachmentCallout = `
-          <div style="margin-top: 24px; padding: 18px 20px; background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px; font-family: Arial, sans-serif;">
-            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <div style="background-color: #f0f9ff; border: 2px solid #0284c7; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: center; font-family: sans-serif;">
+            <p style="margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #0369a1;">
+              📎 Lampiran Dokumen PDF Resmi Terlampir
+            </p>
+            <p style="margin: 0 0 16px 0; font-size: 11px; color: #64748b; font-family: monospace;">
+              ${localPdfFilename}
+            </p>
+            <table border="0" cellpadding="0" cellspacing="0" align="center">
               <tr>
-                <td style="vertical-align: middle;">
-                  <div style="font-size: 15px; font-weight: bold; color: #0369a1; margin-bottom: 4px;">
-                    📄 Dokumen Resmi Terlampir (${localPdfFilename})
-                  </div>
-                  <div style="font-size: 13px; color: #475569;">
-                    Dokumen telah dilampirkan dalam email ini. Anda juga dapat mengunduh atau membuka dokumen langsung melalui tombol di sebelah kanan.
-                  </div>
-                </td>
-                <td align="right" style="vertical-align: middle; padding-left: 15px; white-space: nowrap;">
-                  <a href="${finalAttachUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #0284c7; color: #ffffff; padding: 10px 18px; font-size: 13px; font-weight: bold; text-decoration: none; border-radius: 6px;">
-                    Unduh Dokumen PDF
+                <td align="center" style="border-radius: 8px; background-color: #0284c7;">
+                  <a href="${finalAttachUrl}" target="_blank" rel="noopener noreferrer" style="font-size: 13px; font-weight: bold; color: #ffffff; text-decoration: none; padding: 12px 26px; border-radius: 8px; display: inline-block; font-family: sans-serif;">
+                    📥 Unduh Berkas PDF Dokumen
                   </a>
                 </td>
               </tr>
             </table>
+            <p style="margin: 14px 0 0 0; font-size: 11px; color: #64748b;">
+              Dokumen ini telah ditandatangani dan diverifikasi secara digital oleh ${activeSenderName}.
+            </p>
           </div>
         `;
         finalContent = `${finalContent}\n${attachmentCallout}`;

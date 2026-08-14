@@ -54,13 +54,11 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('verifyDoc'); // Public default view
   const [initialVerifyQuery, setInitialVerifyQuery] = useState<string>('');
 
-  // Global Theme State (Light / Dark mode)
+  // Global Theme State (Light mode by default)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = getDecryptedItem<'light' | 'dark'>('ldi_theme');
     if (saved === 'dark' || saved === 'light') return saved;
-    return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-      ? 'dark'
-      : 'light';
+    return 'light';
   });
 
   useEffect(() => {

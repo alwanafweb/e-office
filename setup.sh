@@ -91,11 +91,35 @@ mkdir -p /var/www/ldi-app
 git clone https://github.com/alwanafweb/e-office.git /var/www/ldi-app
 
 cd /var/www/ldi-app
-echo "⚙️ [4/5] Memasang Dependency NPM & Membangun Proyek..."
+echo "⚙️ [4/6] Memasang Dependency NPM, Membangun Proyek & Menyiapkan Backend Service..."
 npm install
 npm run build
 
-echo "🌐 [5/6] Mengonfigurasi Nginx Web Server..."
+# Membuat Systemd Service untuk Backend Node.js
+cat << 'SERVICE' > /etc/systemd/system/ldi-backend.service
+[Unit]
+Description=E-Office LDI Node.js Backend Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/ldi-app
+ExecStart=/usr/bin/node /var/www/ldi-app/dist/server.cjs
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+Environment=PORT=3000
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+systemctl daemon-reload
+systemctl enable ldi-backend
+systemctl restart ldi-backend
+
+echo "🌐 [5/6] Mengonfigurasi Nginx Web Server & Proxy API Backend..."
 cat << 'NGINX' > /etc/nginx/sites-available/ldi-app
 server {
     listen 80 default_server;
@@ -106,6 +130,19 @@ server {
 
     gzip on;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    # Proxy request API ke backend Node.js (Express) di port 3000
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 
     location / {
         try_files $uri $uri/ /index.html;
@@ -142,8 +179,9 @@ cd /var/www/ldi-app
 git pull origin main || git pull origin master
 npm install
 npm run build
-systemctl reload nginx
-echo "✅ Aplikasi E-Office berhasil diperbarui ke versi terbaru!"
+systemctl restart ldi-backend || true
+systemctl reload nginx || systemctl restart nginx || true
+echo "✅ Aplikasi E-Office & Backend Service berhasil diperbarui ke versi terbaru!"
 UPDATECMD
 chmod +x /usr/local/bin/update-app
 

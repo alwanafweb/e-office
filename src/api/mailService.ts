@@ -3,6 +3,8 @@
  * Handles sending emails, user registration email dispatch, and forgot password OTP notifications.
  */
 
+import { getWorkerUrl } from './client';
+
 export interface MailOptions {
   recipient: string;
   cc?: string;
@@ -59,9 +61,13 @@ async function sendDirectMailketing(options: MailOptions): Promise<MailServiceRe
     ...(attachmentUrl ? { attach1: attachmentUrl } : {}),
   };
 
-  console.log(`[MAILKETING DIRECT CLIENT LOG] Sending HTTP POST to ${MAILKETING_API_URL}`);
-  console.log(` - Headers: Content-Type: application/json, Accept: application/json`);
-  console.log(` - Sender: "${senderName}" <${senderEmail}> | Recipient: ${recipient}`);
+  console.group(`[MAILKETING CLIENT] Email Dispatch -> ${recipient}`);
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('Target Endpoint:', MAILKETING_API_URL);
+  console.log('Sender:', `"${senderName}" <${senderEmail}>`);
+  console.log('Subject:', subject);
+  console.log('Payload Headers:', { 'Content-Type': 'application/json', Accept: 'application/json' });
+  console.log('Payload Body:', { ...jsonPayload, api_token: '***HIDDEN***', api_key: '***HIDDEN***' });
 
   try {
     const response = await fetch(MAILKETING_API_URL, {
@@ -73,8 +79,14 @@ async function sendDirectMailketing(options: MailOptions): Promise<MailServiceRe
       body: JSON.stringify(jsonPayload),
     });
 
+    const responseStatus = response.status;
+    const responseContentType = response.headers.get('content-type') || '';
     const responseText = await response.text();
-    console.log(`[MAILKETING DIRECT CLIENT LOG] Status: ${response.status} | Response: ${responseText}`);
+
+    console.log('Response Status:', responseStatus, response.statusText);
+    console.log('Response Content-Type:', responseContentType);
+    console.log('Response Body:', responseText.length > 300 ? responseText.substring(0, 300) + '...' : responseText);
+    console.groupEnd();
 
     let responseData: any = {};
     try {
@@ -91,10 +103,10 @@ async function sendDirectMailketing(options: MailOptions): Promise<MailServiceRe
       };
     }
 
-    if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+    if (responseText.includes('<html') || responseText.includes('<!DOCTYPE') || responseContentType.includes('text/html')) {
       return {
         success: false,
-        message: `Menerima respon HTML error dari Mailketing API. Pastikan email pengirim (${senderEmail}) telah terverifikasi di dashboard Mailketing.`,
+        message: `Respon Mailketing berupa halaman HTML (${responseStatus}). Pastikan Email Pengirim (${senderEmail}) telah terverifikasi di dashboard Mailketing.co.id.`,
         data: responseData,
       };
     }
@@ -131,10 +143,16 @@ async function sendDirectMailketing(options: MailOptions): Promise<MailServiceRe
       data: responseData,
     };
   } catch (err: any) {
-    console.warn('Direct Mailketing fetch error:', err);
+    console.error('Direct Mailketing fetch error:', err);
+    console.groupEnd();
+
+    const isCorsOrNetwork = err.message?.includes('Failed to fetch') || err.name === 'TypeError';
+    const detailMsg = isCorsOrNetwork
+      ? `Gagal terhubung ke Backend Server (/api/mail/send).\n\nSebab: Server Node.js di VPS belum berjalan atau Nginx belum memproksi rute /api/ ke port 3000. (Mailketing API memblokir request langsung dari browser via CORS, sehingga WAJIB melewati server backend). Jalankan 'update-app' atau './fix-backend.sh' di terminal VPS untuk mengaktifkannya.`
+      : `Gagal terhubung ke Mailketing API: ${err.message || 'Network error'}`;
     return {
       success: false,
-      message: `Gagal terhubung ke Mailketing API: ${err.message || 'Network error'}`,
+      message: detailMsg,
     };
   }
 }
@@ -154,8 +172,11 @@ export async function sendEmail(options: MailOptions): Promise<MailServiceResult
     mailketingApiKey,
   } = options;
 
+  const baseUrl = getWorkerUrl();
+  const mailApiEndpoint = `${baseUrl}/api/mail/send`;
+
   try {
-    const response = await fetch('/api/mail/send', {
+    const response = await fetch(mailApiEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -176,7 +197,7 @@ export async function sendEmail(options: MailOptions): Promise<MailServiceResult
 
     // If backend proxy endpoint returns HTML or non-JSON (e.g. static host SPA fallback index.html), fall back to direct fetch
     if (!response.ok || responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
-      console.warn('Backend proxy /api/mail/send returned HTML/Non-API response. Executing direct Mailketing fallback.');
+      console.warn(`Backend proxy ${mailApiEndpoint} returned HTML/Non-API response (${response.status}). Executing direct Mailketing fallback.`);
       return sendDirectMailketing(options);
     }
 

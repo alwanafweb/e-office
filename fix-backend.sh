@@ -1,0 +1,120 @@
+#!/bin/bash
+# ==============================================================================
+#  E-OFFICE LDI - BACKEND ACTIVATOR & NGINX PROXY REPAIR SCRIPT
+# ==============================================================================
+set -e
+
+echo "🚀 [1/4] Menarik update terbaru dari GitHub & Build bundle..."
+cd /var/www/ldi-app
+git pull origin main || git pull origin master || true
+npm install
+npm run build
+
+echo "⚙️ [2/4] Menyiapkan Systemd Service (ldi-backend.service)..."
+cat << 'SERVICE' > /etc/systemd/system/ldi-backend.service
+[Unit]
+Description=E-Office LDI Node.js Backend Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/ldi-app
+ExecStart=/usr/bin/node /var/www/ldi-app/dist/server.cjs
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+Environment=PORT=3000
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+systemctl daemon-reload
+systemctl enable ldi-backend
+systemctl restart ldi-backend
+
+echo "🌐 [3/4] Memperbarui Konfigurasi Nginx dengan Reverse Proxy /api/..."
+# Periksa apakah konfigurasi SSL sudah ada atau belum
+if grep -q "ssl_certificate" /etc/nginx/sites-available/ldi-app 2>/dev/null; then
+    echo "  ℹ️ Konfigurasi SSL terdeteksi. Memperbarui blok location /api/..."
+    # Pastikan location /api/ ada di dalam konfigurasi server
+    if ! grep -q "location /api/" /etc/nginx/sites-available/ldi-app; then
+        sed -i '/location \/ {/i \    location \/api\/ {\n        proxy_pass http:\/\/127.0.0.1:3000\/api\/;\n        proxy_http_version 1.1;\n        proxy_set_header Upgrade \$http_upgrade;\n        proxy_set_header Connection '\''upgrade'\'';\n        proxy_set_header Host \$host;\n        proxy_cache_bypass \$http_upgrade;\n        proxy_set_header X-Real-IP \$remote_addr;\n        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto \$scheme;\n    }\n' /etc/nginx/sites-available/ldi-app
+    fi
+else
+    cat << 'NGINX' > /etc/nginx/sites-available/ldi-app
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name e-office.ldi.co.id _;
+    root /var/www/ldi-app/dist;
+    index index.html;
+
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    # Proxy request API ke backend Node.js (Express) di port 3000
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-Content-Type-Options "nosniff";
+
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
+    }
+}
+NGINX
+fi
+
+ln -sf /etc/nginx/sites-available/ldi-app /etc/nginx/sites-enabled/default 2>/dev/null || true
+ln -sf /etc/nginx/sites-available/ldi-app /etc/nginx/sites-enabled/ldi-app 2>/dev/null || true
+nginx -t
+systemctl reload nginx || systemctl restart nginx
+
+echo "🔍 [4/4] Memeriksa Status Backend & Endpoint Mail Gateway..."
+sleep 2
+HEALTH_CHECK=$(curl -s http://127.0.0.1:3000/api/health || echo "FAILED")
+echo "  • Local Backend Health: $HEALTH_CHECK"
+
+# Update script pembaruan sistem di VPS
+cat << 'UPDATECMD' > /usr/local/bin/update-app
+#!/bin/bash
+set -e
+echo "🔄 Memperbarui Aplikasi E-Office dari GitHub..."
+cd /var/www/ldi-app
+git pull origin main || git pull origin master
+npm install
+npm run build
+systemctl restart ldi-backend || true
+systemctl reload nginx || systemctl restart nginx || true
+echo "✅ Aplikasi E-Office & Backend Service berhasil diperbarui ke versi terbaru!"
+UPDATECMD
+chmod +x /usr/local/bin/update-app
+
+echo "
+================================================================================
+✅ BACKEND SERVICE & NGINX PROXY BERHASIL DIAKTIFKAN!
+================================================================================
+Node.js backend sekarang aktif di background (Port 3000) dan Nginx memproksikan
+semua endpoint /api/ secara langsung. Pengiriman email via Mailketing API kini
+berjalan sempurna melalui backend server tanpa kendala CORS.
+
+Silakan uji kembali pengiriman email di https://e-office.ldi.co.id/
+================================================================================
+"

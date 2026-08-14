@@ -445,7 +445,67 @@ async function startServer() {
     contentType?: string;
   }
 
-  // Mailketing Email Dispatcher Helper (Supports direct base64/buffer attachments and multipart/form-data)
+  // Helper to obtain a 100% public, directly accessible PDF URL for Mailketing API
+  async function getPublicDirectPdfUrl(buffer: Buffer, filename: string, fallbackUrl?: string): Promise<string> {
+    const cleanFilename = (filename || 'Dokumen_Resmi_LDI.pdf').replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+    
+    // Strategy 1: Upload to tmpfiles.org to get a direct public CDN download link (accessible by Mailketing servers)
+    try {
+      const formData = new FormData();
+      const blob = new Blob([buffer], { type: 'application/pdf' });
+      formData.append('file', blob, cleanFilename);
+
+      const uploadRes = await fetch('https://tmpfiles.org/api/v1/upload', {
+        method: 'POST',
+        body: formData,
+        signal: AbortSignal.timeout(6000),
+      });
+
+      if (uploadRes.ok) {
+        const data: any = await uploadRes.json();
+        if (data?.data?.url) {
+          // Convert https://tmpfiles.org/12345/filename.pdf to direct download https://tmpfiles.org/dl/12345/filename.pdf
+          const directUrl = data.data.url.replace('tmpfiles.org/', 'tmpfiles.org/dl/');
+          console.log(`[PUBLIC PDF CDN] Successfully generated direct PDF URL: ${directUrl}`);
+          return directUrl;
+        }
+      }
+    } catch (err: any) {
+      console.warn('[PUBLIC PDF CDN] tmpfiles.org upload notice:', err.message);
+    }
+
+    // Strategy 2: Upload to file.io as fallback
+    try {
+      const formData = new FormData();
+      const blob = new Blob([buffer], { type: 'application/pdf' });
+      formData.append('file', blob, cleanFilename);
+
+      const fileIoRes = await fetch('https://file.io/?expires=14d', {
+        method: 'POST',
+        body: formData,
+        signal: AbortSignal.timeout(6000),
+      });
+
+      if (fileIoRes.ok) {
+        const data: any = await fileIoRes.json();
+        if (data?.link) {
+          console.log(`[PUBLIC PDF CDN] Successfully generated file.io PDF URL: ${data.link}`);
+          return data.link;
+        }
+      }
+    } catch (err: any) {
+      console.warn('[PUBLIC PDF CDN] file.io upload notice:', err.message);
+    }
+
+    // Strategy 3: Fallback to existing fallbackUrl (if available)
+    if (fallbackUrl && fallbackUrl.startsWith('http')) {
+      return fallbackUrl;
+    }
+
+    return fallbackUrl || '';
+  }
+
+  // Mailketing Email Dispatcher Helper (Using application/x-www-form-urlencoded & reliable direct public attachment URL)
   async function sendMailketingEmailServer(
     recipient: string,
     subject: string,
@@ -465,10 +525,10 @@ async function startServer() {
     console.log(`\n================================================================================`);
     console.log(`[MAILKETING LOG ${timestamp}] [START EMAIL DISPATCH]`);
     console.log(` - Target Recipient : ${recipient}`);
-    console.log(` - CC Recipients   : ${cc || '(none)'}`);
+    console.log(` - CC Recipients    : ${cc || '(none)'}`);
     console.log(` - Sender Info      : "${senderName}" <${senderEmail}>`);
     console.log(` - Subject          : ${subject}`);
-    console.log(` - Attachment URL   : ${attachUrl || '(none)'}`);
+    console.log(` - Initial AttachURL: ${attachUrl || '(none)'}`);
     console.log(` - Attachments Array: ${attachments ? `${attachments.length} item(s)` : 'Not provided'}`);
     console.log(` - Direct pdfBase64 : ${pdfBase64 ? `Provided (${pdfBase64.length} chars)` : 'Not provided'}`);
     console.log(` - Active API Token : ${activeApiKey ? `${activeApiKey.substring(0, 8)}...` : '(EMPTY)'}`);
@@ -547,7 +607,8 @@ async function startServer() {
         }
       }
 
-      // Verify and log content integrity of the binary PDF Buffer
+      // Determine the final public accessible attachment URL
+      let finalAttachUrl = attachUrl || '';
       if (localPdfBuffer && localPdfBuffer.length > 0) {
         const isPdfHeader = localPdfBuffer.slice(0, 5).toString('ascii').startsWith('%PDF-');
         console.log(`[MAILKETING LOG ${timestamp}] [ATTACHMENT INTEGRITY VERIFIED] ✅`);
@@ -555,56 +616,45 @@ async function startServer() {
         console.log(` - Filename         : ${localPdfFilename}`);
         console.log(` - Buffer Size      : ${(localPdfBuffer.length / 1024).toFixed(2)} KB (${localPdfBuffer.length} bytes)`);
         console.log(` - PDF Header Valid : ${isPdfHeader ? 'YES (%PDF- header verified)' : 'NO (Non-standard header)'}`);
+
+        // Generate public direct download URL so Mailketing API server can download and attach it
+        const directUrl = await getPublicDirectPdfUrl(localPdfBuffer, localPdfFilename, attachUrl);
+        if (directUrl) {
+          finalAttachUrl = directUrl;
+          console.log(`[MAILKETING LOG ${timestamp}] [FINAL ATTACHMENT URL READY] -> ${finalAttachUrl}`);
+        }
       } else {
-        console.log(`[MAILKETING LOG ${timestamp}] [ATTACHMENT NOTICE] No binary PDF buffer loaded. Will use URL fallback if available (${attachUrl || 'none'}).`);
+        console.log(`[MAILKETING LOG ${timestamp}] [ATTACHMENT NOTICE] No binary PDF buffer loaded. Will use URL: ${finalAttachUrl || 'none'}`);
       }
 
-      let response: Response;
-
-      if (localPdfBuffer && typeof FormData !== 'undefined') {
-        // Option A: Send via native multipart FormData with real binary Blob attachment
-        console.log(`[MAILKETING LOG ${timestamp}] [API REQUEST] Sending POST (multipart/form-data with binary attach1)`);
-        const formData = new FormData();
-        formData.append('api_token', activeApiKey);
-        formData.append('from_name', senderName);
-        formData.append('from_email', senderEmail);
-        formData.append('recipient', recipient.trim());
-        formData.append('subject', subject);
-        formData.append('content', content);
-
-        const pdfBlob = new Blob([localPdfBuffer], { type: 'application/pdf' });
-        formData.append('attach1', pdfBlob, localPdfFilename);
-        if (attachUrl && attachUrl.trim()) {
-          formData.append('attachment_url', attachUrl.trim());
-        }
-
-        response = await fetch('https://api.mailketing.co.id/api/v1/send', {
-          method: 'POST',
-          body: formData,
-        });
-      } else {
-        // Option B: Standard URL encoded POST
-        console.log(`[MAILKETING LOG ${timestamp}] [API REQUEST] Sending POST (application/x-www-form-urlencoded)`);
-        const formParams = new URLSearchParams();
-        formParams.set('api_token', activeApiKey);
-        formParams.set('from_name', senderName);
-        formParams.set('from_email', senderEmail);
-        formParams.set('recipient', recipient.trim());
-        formParams.set('subject', subject);
-        formParams.set('content', content);
-        if (attachUrl && attachUrl.trim()) {
-          formParams.set('attach1', attachUrl.trim());
-        }
-
-        response = await fetch('https://api.mailketing.co.id/api/v1/send', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json',
-          },
-          body: formParams.toString(),
-        });
+      // Update any download links in HTML body to use finalAttachUrl if available
+      let finalContent = content;
+      if (finalAttachUrl && attachUrl && attachUrl !== finalAttachUrl) {
+        finalContent = finalContent.split(attachUrl).join(finalAttachUrl);
       }
+
+      // Mailketing API v1 MUST use application/x-www-form-urlencoded
+      console.log(`[MAILKETING LOG ${timestamp}] [API REQUEST] Sending POST (application/x-www-form-urlencoded) to https://api.mailketing.co.id/api/v1/send`);
+      const formParams = new URLSearchParams();
+      formParams.set('api_token', activeApiKey);
+      formParams.set('from_name', senderName);
+      formParams.set('from_email', senderEmail);
+      formParams.set('recipient', recipient.trim());
+      formParams.set('subject', subject);
+      formParams.set('content', finalContent);
+      if (finalAttachUrl && finalAttachUrl.trim()) {
+        formParams.set('attach1', finalAttachUrl.trim());
+        console.log(` - Set Parameter attach1: ${finalAttachUrl.trim()}`);
+      }
+
+      const response = await fetch('https://api.mailketing.co.id/api/v1/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        body: formParams.toString(),
+      });
 
       const responseStatusCode = response.status;
       const responseStatusText = response.statusText;
@@ -689,61 +739,34 @@ async function startServer() {
             // Short delay to avoid rate limiting
             await new Promise((resolve) => setTimeout(resolve, 600));
 
-            let ccRes: Response;
-            if (localPdfBuffer && typeof FormData !== 'undefined') {
-              const ccFormData = new FormData();
-              ccFormData.append('api_token', activeApiKey);
-              ccFormData.append('from_name', senderName);
-              ccFormData.append('from_email', senderEmail);
-              ccFormData.append('recipient', ccAddr);
-              ccFormData.append('subject', `[CC] ${subject}`);
-              ccFormData.append(
-                'content',
-                `
-                  <div style="background-color: #fefce8; border: 1px solid #fef08a; padding: 12px 18px; border-radius: 10px; margin-bottom: 20px; font-family: Arial, sans-serif; font-size: 13px; color: #854d0e;">
-                    📌 <strong>Salinan Tembusan (CC Email):</strong> Email ini dikirimkan sebagai salinan tembusan dokumen resmi kepada Anda. Penerima Utama: <strong>${recipient}</strong>.
-                  </div>
-                  ${content}
-                `
-              );
-              const pdfBlob = new Blob([localPdfBuffer], { type: 'application/pdf' });
-              ccFormData.append('attach1', pdfBlob, localPdfFilename);
-
-              console.log(`[MAILKETING LOG ${timestamp}] [CC DISPATCH] Dispatching copy to: ${ccAddr}`);
-              ccRes = await fetch('https://api.mailketing.co.id/api/v1/send', {
-                method: 'POST',
-                body: ccFormData,
-              });
-            } else {
-              const ccFormParams = new URLSearchParams();
-              ccFormParams.set('api_token', activeApiKey);
-              ccFormParams.set('from_name', senderName);
-              ccFormParams.set('from_email', senderEmail);
-              ccFormParams.set('recipient', ccAddr);
-              ccFormParams.set('subject', `[CC] ${subject}`);
-              ccFormParams.set(
-                'content',
-                `
-                  <div style="background-color: #fefce8; border: 1px solid #fef08a; padding: 12px 18px; border-radius: 10px; margin-bottom: 20px; font-family: Arial, sans-serif; font-size: 13px; color: #854d0e;">
-                    📌 <strong>Salinan Tembusan (CC Email):</strong> Email ini dikirimkan sebagai salinan tembusan dokumen resmi kepada Anda. Penerima Utama: <strong>${recipient}</strong>.
-                  </div>
-                  ${content}
-                `
-              );
-              if (attachUrl && attachUrl.trim()) {
-                ccFormParams.set('attach1', attachUrl.trim());
-              }
-
-              console.log(`[MAILKETING LOG ${timestamp}] [CC DISPATCH] Dispatching copy to: ${ccAddr}`);
-              ccRes = await fetch('https://api.mailketing.co.id/api/v1/send', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/x-www-form-urlencoded',
-                  'Accept': 'application/json',
-                },
-                body: ccFormParams.toString(),
-              });
+            const ccFormParams = new URLSearchParams();
+            ccFormParams.set('api_token', activeApiKey);
+            ccFormParams.set('from_name', senderName);
+            ccFormParams.set('from_email', senderEmail);
+            ccFormParams.set('recipient', ccAddr);
+            ccFormParams.set('subject', `[CC] ${subject}`);
+            ccFormParams.set(
+              'content',
+              `
+                <div style="background-color: #fefce8; border: 1px solid #fef08a; padding: 12px 18px; border-radius: 10px; margin-bottom: 20px; font-family: Arial, sans-serif; font-size: 13px; color: #854d0e;">
+                  📌 <strong>Salinan Tembusan (CC Email):</strong> Email ini dikirimkan sebagai salinan tembusan dokumen resmi kepada Anda. Penerima Utama: <strong>${recipient}</strong>.
+                </div>
+                ${finalContent}
+              `
+            );
+            if (finalAttachUrl && finalAttachUrl.trim()) {
+              ccFormParams.set('attach1', finalAttachUrl.trim());
             }
+
+            console.log(`[MAILKETING LOG ${timestamp}] [CC DISPATCH] Dispatching copy to: ${ccAddr} with attach1: ${finalAttachUrl || 'none'}`);
+            const ccRes = await fetch('https://api.mailketing.co.id/api/v1/send', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept': 'application/json',
+              },
+              body: ccFormParams.toString(),
+            });
             const ccText = await ccRes.text();
             console.log(`[MAILKETING LOG ${timestamp}] [CC DISPATCH SUCCESS] Result for ${ccAddr}: ${ccText.substring(0, 150)}`);
           } catch (ccErr: any) {

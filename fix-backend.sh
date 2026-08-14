@@ -47,6 +47,12 @@ echo "🌐 [3/4] Memperbarui Konfigurasi Nginx dengan Reverse Proxy /api/..."
 rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-available/default 2>/dev/null || true
 mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
 
+# Deteksi lokasi binary Nginx
+NGINX_BIN="/usr/sbin/nginx"
+if command -v nginx >/dev/null 2>&1; then
+    NGINX_BIN=$(command -v nginx)
+fi
+
 # Periksa apakah sertifikat SSL Let's Encrypt sudah ada di server
 if [ -f "/etc/letsencrypt/live/e-office.ldi.co.id/fullchain.pem" ]; then
     echo "  🔒 Sertifikat SSL Let's Encrypt terdeteksi. Memasang konfigurasi HTTPS lengkap..."

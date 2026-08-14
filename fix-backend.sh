@@ -43,31 +43,70 @@ systemctl restart ldi-backend
 
 echo "🌐 [3/4] Memperbarui Konfigurasi Nginx dengan Reverse Proxy /api/..."
 
-# Deteksi binary Nginx
-if command -v nginx >/dev/null 2>&1; then
-    NGINX_BIN="nginx"
-elif [ -x /usr/sbin/nginx ]; then
-    NGINX_BIN="/usr/sbin/nginx"
-else
-    echo "⚠️ Nginx belum terpasang atau tidak ditemukan. Menginstal Nginx via apt..."
-    apt-get update -y && apt-get install -y nginx || true
-    NGINX_BIN=$(command -v nginx || echo "/usr/sbin/nginx")
-fi
-
+# Bersihkan symlink default lama yang sering menyebabkan duplicate listen
+rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-available/default 2>/dev/null || true
 mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
 
-# Periksa apakah konfigurasi SSL sudah ada atau belum
-if grep -q "ssl_certificate" /etc/nginx/sites-available/ldi-app 2>/dev/null; then
-    echo "  ℹ️ Konfigurasi SSL terdeteksi. Memperbarui blok location /api/..."
-    if ! grep -q "location /api/" /etc/nginx/sites-available/ldi-app; then
-        sed -i '/location \/ {/i \    location \/api\/ {\n        proxy_pass http:\/\/127.0.0.1:3000\/api\/;\n        proxy_http_version 1.1;\n        proxy_set_header Upgrade \$http_upgrade;\n        proxy_set_header Connection '\''upgrade'\'';\n        proxy_set_header Host \$host;\n        proxy_cache_bypass \$http_upgrade;\n        proxy_set_header X-Real-IP \$remote_addr;\n        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto \$scheme;\n    }\n' /etc/nginx/sites-available/ldi-app
-    fi
-else
+# Periksa apakah sertifikat SSL Let's Encrypt sudah ada di server
+if [ -f "/etc/letsencrypt/live/e-office.ldi.co.id/fullchain.pem" ]; then
+    echo "  🔒 Sertifikat SSL Let's Encrypt terdeteksi. Memasang konfigurasi HTTPS lengkap..."
     cat << 'NGINX' > /etc/nginx/sites-available/ldi-app
 server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name e-office.ldi.co.id _;
+    listen 80;
+    listen [::]:80;
+    server_name e-office.ldi.co.id;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name e-office.ldi.co.id;
+
+    ssl_certificate /etc/letsencrypt/live/e-office.ldi.co.id/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/e-office.ldi.co.id/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    root /var/www/ldi-app/dist;
+    index index.html;
+
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    # Proxy request API ke backend Node.js (Express) di port 3000
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-Content-Type-Options "nosniff";
+
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
+    }
+}
+NGINX
+else
+    echo "  🌐 Memasang konfigurasi HTTP port 80..."
+    cat << 'NGINX' > /etc/nginx/sites-available/ldi-app
+server {
+    listen 80;
+    listen [::]:80;
+    server_name e-office.ldi.co.id;
     root /var/www/ldi-app/dist;
     index index.html;
 
@@ -102,12 +141,13 @@ server {
 NGINX
 fi
 
-ln -sf /etc/nginx/sites-available/ldi-app /etc/nginx/sites-enabled/default 2>/dev/null || true
-ln -sf /etc/nginx/sites-available/ldi-app /etc/nginx/sites-enabled/ldi-app 2>/dev/null || true
+ln -sf /etc/nginx/sites-available/ldi-app /etc/nginx/sites-enabled/ldi-app
 
-# Test & Reload Nginx
-$NGINX_BIN -t || true
-systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || service nginx reload 2>/dev/null || true
+# Test & Restart Nginx
+echo "  • Menguji sintaks konfigurasi Nginx..."
+$NGINX_BIN -t
+systemctl restart nginx || /usr/sbin/nginx -s reload || true
+systemctl enable nginx 2>/dev/null || true
 
 echo "🔍 [4/4] Memeriksa Status Backend & Endpoint Mail Gateway..."
 sleep 2

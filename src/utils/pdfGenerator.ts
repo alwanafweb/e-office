@@ -141,6 +141,26 @@ export const renderTemplateToPdf = async (
   // Additional settlement time for canvas/fonts/SVGs
   await new Promise((resolve) => setTimeout(resolve, 200));
 
+  // Adjust spacing for elements marked with page-break so that in multi-page PDF generation they begin cleanly at the top of the next page
+  const pageBreakElements = container.querySelectorAll<HTMLElement>(
+    '[data-page-break="true"], .page-break-before, .break-before-page'
+  );
+  const effectiveWidth = container.clientWidth || 794;
+  const pageHeightInPx = effectiveWidth * (297 / 210); // Standard A4 Aspect Ratio (~1123px)
+
+  pageBreakElements.forEach((el) => {
+    const rect = el.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const topRelativeToContainer = rect.top - containerRect.top;
+    const pageIndex = Math.floor(topRelativeToContainer / pageHeightInPx);
+    const targetPageTop = (pageIndex + 1) * pageHeightInPx;
+    const gap = targetPageTop - topRelativeToContainer;
+
+    if (gap > 15 && gap < pageHeightInPx - 15) {
+      el.style.marginTop = `${gap + 20}px`;
+    }
+  });
+
   try {
     const canvas = await html2canvas(container, {
       scale: 2,

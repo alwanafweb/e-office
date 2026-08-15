@@ -304,8 +304,11 @@ const SphTemplateView: React.FC<{
         </div>
       )}
 
-      {/* Verification QR Badge & Official Signature Section */}
-      <div className="pt-6 border-t border-slate-200 flex items-end justify-between gap-6">
+      {/* Verification QR Badge & Official Signature Section (Page Break to new page) */}
+      <div
+        className="page-break-before break-before-page pt-8 mt-8 border-t-2 border-slate-200 flex items-end justify-between gap-6"
+        data-page-break="true"
+      >
         <QRCodeBadge
           docNumber={sph.sphNumber}
           docType="SPH"
@@ -444,8 +447,11 @@ const PksTemplateView: React.FC<{
         )}
       </div>
 
-      {/* Dual Signatures & Verification */}
-      <div className="pt-8 border-t border-slate-200 space-y-4">
+      {/* Dual Signatures & Verification (Page Break to new page) */}
+      <div
+        className="page-break-before break-before-page pt-8 mt-8 border-t-2 border-slate-200 space-y-4"
+        data-page-break="true"
+      >
         <p className="text-center font-bold text-slate-800">
           Demikian Perjanjian ini dibuat dan ditandatangani oleh Para Pihak dengan penuh kesadaran dan tanpa paksaan.
         </p>
@@ -455,7 +461,8 @@ const PksTemplateView: React.FC<{
             {/* Party 1 */}
             <div className="space-y-2">
               <p className="font-bold text-blue-950">PIHAK PERTAMA</p>
-              <p className="text-slate-600 text-[11px]">{profile.legalName || profile.name}</p>
+              <p className="text-slate-600 text-xs font-semibold">Hormat Kami,</p>
+              <p className="text-slate-900 font-bold text-xs">{profile.legalName || profile.name}</p>
               <div className="h-20 flex items-center justify-center relative">
                 {showStamp && (
                   <div className="absolute -left-10 top-1/2 -translate-y-1/2 pointer-events-none opacity-90 z-0">
@@ -756,8 +763,11 @@ const InvoiceTemplateView: React.FC<{
         </span>
       </div>
 
-      {/* Footer Signatures & QR Code */}
-      <div className="pt-6 border-t border-slate-200 flex items-end justify-between gap-6">
+      {/* Footer Signatures & QR Code (Page Break to new page) */}
+      <div
+        className="page-break-before break-before-page pt-8 mt-8 border-t-2 border-slate-200 flex items-end justify-between gap-6"
+        data-page-break="true"
+      >
         <QRCodeBadge
           docNumber={invoice.invoiceNumber}
           docType="INVOICE"
@@ -766,9 +776,10 @@ const InvoiceTemplateView: React.FC<{
         />
 
         {showSignatures && (
-          <div className="text-center relative min-w-[180px]">
-            <p className="text-slate-600 mb-1">Departemen Keuangan,</p>
+          <div className="text-center relative min-w-[200px]">
+            <p className="text-slate-600 mb-1">Hormat Kami,</p>
             <p className="font-bold text-blue-950">{profile.legalName || profile.name}</p>
+            <p className="text-slate-500 text-[10px] mb-1 font-medium">Departemen Keuangan</p>
 
             <div className="relative my-2 h-16 flex items-center justify-center">
               {showStamp && (

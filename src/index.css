@@ -249,7 +249,7 @@ html.dark body {
     print-color-adjust: exact !important;
   }
 
-  /* Footer & Signature Section Protection */
+  /* Footer & Signature Section Protection & Page Break support */
   #printable-document-content footer,
   #printable-document-content .signature-section,
   #printable-document-content .document-footer {
@@ -257,5 +257,22 @@ html.dark body {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
+
+  #printable-document-content .page-break-before,
+  #printable-document-content .break-before-page,
+  #printable-document-content [data-page-break="true"] {
+    page-break-before: always !important;
+    break-before: page !important;
+    margin-top: 0 !important;
+    padding-top: 8mm !important;
+  }
+}
+
+/* Screen Page Break Utilities */
+.page-break-before,
+.break-before-page,
+[data-page-break="true"] {
+  page-break-before: always;
+  break-before: page;
 }
 

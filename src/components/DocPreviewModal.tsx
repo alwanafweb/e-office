@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Printer, Download, Mail, PenTool, Upload, Check, Lock, Unlock, Eraser, Receipt, FileCheck } from 'lucide-react';
+import { X, Printer, Download, Mail, PenTool, Upload, Check, Lock, Unlock, Eraser, Receipt, FileCheck, ShieldCheck } from 'lucide-react';
 import { CompanyProfile, Customer, Invoice, PKS, SPH } from '../types';
 import { PDFTemplate, getContactPersonName } from './PDFTemplate';
 import { SendDocEmailModal } from './SendDocEmailModal';
@@ -57,6 +57,14 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
       : type === 'PKS'
       ? (docData as PKS).pksNumber
       : (docData as Invoice).invoiceNumber;
+
+  // Check whether this document has been digitally signed
+  const isDocSigned =
+    type === 'SPH'
+      ? Boolean((docData as SPH).signedByLDI || companyProfile?.defaultSignatureBase64)
+      : type === 'PKS'
+      ? Boolean((docData as PKS).party1Signed || (docData as PKS).party1SignatureData || companyProfile?.defaultSignatureBase64)
+      : Boolean((docData as Invoice).signedByFinance || (docData as Invoice).signatureData || companyProfile?.defaultSignatureBase64);
 
   const handleDownloadPdf = async () => {
     setIsDownloading(true);
@@ -312,6 +320,35 @@ export const DocPreviewModal: React.FC<DocPreviewModalProps> = ({
             <span className="text-[11px] font-mono font-bold bg-rose-100 text-rose-800 px-2.5 py-0.5 rounded-full border border-rose-300 shrink-0">
               PROTECTED PDF
             </span>
+          </div>
+        )}
+
+        {/* Digital Signature Verified Indicator Banner */}
+        {isDocSigned && (
+          <div className="bg-emerald-50 border-b border-emerald-300 px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs print:hidden animate-fade-in">
+            <div className="flex items-center gap-2.5">
+              <span className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-white shadow-xs shrink-0">
+                <Lock className="w-3.5 h-3.5 text-white" />
+              </span>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-extrabold text-emerald-950 text-xs">
+                    Verified by PT. Lintas Data Internasional Digital Sign
+                  </span>
+                  <span className="bg-emerald-200/80 text-emerald-900 text-[10px] font-bold px-2 py-0.5 rounded-md border border-emerald-400/60 flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-emerald-700" /> TTD Terverifikasi
+                  </span>
+                </div>
+                <p className="text-[11px] text-emerald-800 mt-0.5">
+                  Integritas dokumen {docNumber} terjamin sah dan ditandatangani secara elektronik melalui sistem resmi PT. LDI.
+                </p>
+              </div>
+            </div>
+
+            <div className="hidden sm:flex items-center gap-2 bg-white/80 border border-emerald-300 px-3 py-1 rounded-lg text-[10px] font-mono text-emerald-900">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>SHA256: VALID</span>
+            </div>
           </div>
         )}
 

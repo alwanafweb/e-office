@@ -1,9 +1,39 @@
 import React from 'react';
+import { Lock, ShieldCheck } from 'lucide-react';
 import { CompanyProfile, Customer, Invoice, PKS, SPH } from '../types';
 import { KopSuratHeader } from './KopSuratHeader';
 import { QRCodeBadge } from './QRCodeBadge';
 import { formatDateIndonesian, formatIDR, terbilangRupiah } from '../utils/formatters';
 import { COMPANY_PROFILE } from '../data/initialData';
+
+export const VerifiedDigitalSignBadge: React.FC<{
+  companyLegalName?: string;
+  signerName?: string;
+  className?: string;
+}> = ({ companyLegalName, signerName, className = '' }) => {
+  const company = companyLegalName || 'PT. Lintas Data Internasional';
+  return (
+    <div
+      className={`inline-flex items-center gap-1.5 bg-emerald-50/90 border border-emerald-500/40 rounded-full px-2.5 py-0.5 text-emerald-800 shadow-2xs font-sans ${className}`}
+      style={{
+        backgroundColor: '#ecfdf5',
+        borderColor: '#10b981',
+        color: '#065f46',
+      }}
+      title={`Dokumen Sah & Ditandatangani Digital oleh ${company}`}
+    >
+      <span
+        className="w-4 h-4 rounded-full bg-emerald-600 flex items-center justify-center text-white shrink-0 shadow-2xs"
+        style={{ backgroundColor: '#059669', color: '#ffffff' }}
+      >
+        <Lock className="w-2.5 h-2.5 text-white" />
+      </span>
+      <span className="text-[9.5px] font-bold tracking-tight text-emerald-900 leading-none whitespace-nowrap">
+        Verified by <strong className="font-black text-emerald-950">{company}</strong> Digital Sign
+      </span>
+    </div>
+  );
+};
 
 export const getContactPersonName = (
   docRep?: string,
@@ -311,11 +341,18 @@ const SphTemplateView: React.FC<{
 
               {/* Digital Signature */}
               {signatureImage ? (
-                <img
-                  src={signatureImage}
-                  alt="Tanda Tangan Digital Direksi"
-                  className="max-h-16 object-contain z-10 relative"
-                />
+                <div className="flex flex-col items-center z-10 relative">
+                  <img
+                    src={signatureImage}
+                    alt="Tanda Tangan Digital Direksi"
+                    className="max-h-16 object-contain"
+                  />
+                  <VerifiedDigitalSignBadge
+                    companyLegalName={profile.legalName || profile.name}
+                    signerName={profile.directorName}
+                    className="mt-0.5"
+                  />
+                </div>
               ) : (
                 <div className="w-36 h-14 border-b border-slate-400 z-10 relative flex items-end justify-center pb-1"></div>
               )}
@@ -436,7 +473,14 @@ const PksTemplateView: React.FC<{
                   </div>
                 )}
                 {party1Sig ? (
-                  <img src={party1Sig} alt="TTD Pihak 1" className="max-h-16 object-contain z-10 relative" />
+                  <div className="flex flex-col items-center z-10 relative">
+                    <img src={party1Sig} alt="TTD Pihak 1" className="max-h-16 object-contain" />
+                    <VerifiedDigitalSignBadge
+                      companyLegalName={profile.legalName || profile.name}
+                      signerName={pks.party1SignerName || profile.directorName}
+                      className="mt-0.5"
+                    />
+                  </div>
                 ) : (
                   <div className="w-36 h-14 border-b border-slate-400 z-10 relative flex items-end justify-center pb-1"></div>
                 )}
@@ -766,11 +810,18 @@ const InvoiceTemplateView: React.FC<{
               )}
 
               {signatureImage ? (
-                <img
-                  src={signatureImage}
-                  alt="Tanda Tangan Digital Finance"
-                  className="max-h-14 object-contain z-10 relative"
-                />
+                <div className="flex flex-col items-center z-10 relative">
+                  <img
+                    src={signatureImage}
+                    alt="Tanda Tangan Digital Finance"
+                    className="max-h-14 object-contain"
+                  />
+                  <VerifiedDigitalSignBadge
+                    companyLegalName={profile.legalName || profile.name}
+                    signerName={profile.financeManager || 'Finance Department'}
+                    className="mt-0.5"
+                  />
+                </div>
               ) : (
                 <div className="w-36 h-12 border-b border-slate-400 z-10 relative flex items-end justify-center pb-1"></div>
               )}

@@ -58,6 +58,41 @@ export const convertPdfToBase64Result = (
 };
 
 /**
+ * Adjusts margin spacing for elements marked with page-break so that in multi-page PDF generation
+ * (html2canvas slicing), the signature block & "Hormat Kami" start cleanly at the top of the next page.
+ * Returns a restoration function to revert the DOM style afterwards.
+ */
+export const applyPageBreakSpacing = (container: HTMLElement): (() => void) => {
+  const pageBreakElements = container.querySelectorAll<HTMLElement>(
+    '[data-page-break="true"], .page-break-before, .break-before-page'
+  );
+  const effectiveWidth = container.clientWidth || 794;
+  const pageHeightInPx = effectiveWidth * (297 / 210); // Standard A4 Aspect Ratio (~1123px)
+
+  const originalStyles: Array<{ el: HTMLElement; marginTop: string }> = [];
+
+  pageBreakElements.forEach((el) => {
+    originalStyles.push({ el, marginTop: el.style.marginTop });
+    const rect = el.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const topRelativeToContainer = rect.top - containerRect.top;
+    const pageIndex = Math.floor(topRelativeToContainer / pageHeightInPx);
+    const targetPageTop = (pageIndex + 1) * pageHeightInPx;
+    const gap = targetPageTop - topRelativeToContainer;
+
+    if (gap > 10) {
+      el.style.marginTop = `${gap + 28}px`;
+    }
+  });
+
+  return () => {
+    originalStyles.forEach(({ el, marginTop }) => {
+      el.style.marginTop = marginTop;
+    });
+  };
+};
+
+/**
  * High-fidelity offscreen renderer for PDFTemplate.
  * Guarantees 100% visual parity between preview, direct downloads, and email attachments.
  */
@@ -142,24 +177,7 @@ export const renderTemplateToPdf = async (
   await new Promise((resolve) => setTimeout(resolve, 200));
 
   // Adjust spacing for elements marked with page-break so that in multi-page PDF generation they begin cleanly at the top of the next page
-  const pageBreakElements = container.querySelectorAll<HTMLElement>(
-    '[data-page-break="true"], .page-break-before, .break-before-page'
-  );
-  const effectiveWidth = container.clientWidth || 794;
-  const pageHeightInPx = effectiveWidth * (297 / 210); // Standard A4 Aspect Ratio (~1123px)
-
-  pageBreakElements.forEach((el) => {
-    const rect = el.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
-    const topRelativeToContainer = rect.top - containerRect.top;
-    const pageIndex = Math.floor(topRelativeToContainer / pageHeightInPx);
-    const targetPageTop = (pageIndex + 1) * pageHeightInPx;
-    const gap = targetPageTop - topRelativeToContainer;
-
-    if (gap > 15 && gap < pageHeightInPx - 15) {
-      el.style.marginTop = `${gap + 20}px`;
-    }
-  });
+  applyPageBreakSpacing(container);
 
   try {
     const canvas = await html2canvas(container, {
@@ -232,9 +250,14 @@ export const exportToPdf = async (
   const cleanFilename = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
 
   if (element) {
+    let revertPageBreakSpacing: (() => void) | null = null;
     try {
       const originalScrollPos = window.scrollY;
       window.scrollTo(0, 0);
+
+      // Dynamically calculate and apply page break margin to push "Hormat Kami" and signatures to next page
+      revertPageBreakSpacing = applyPageBreakSpacing(element);
+      await new Promise((r) => setTimeout(r, 60));
 
       const canvas = await html2canvas(element, {
         scale: 2,
@@ -246,6 +269,11 @@ export const exportToPdf = async (
         scrollY: 0,
         windowWidth: element.scrollWidth || 800,
       });
+
+      if (revertPageBreakSpacing) {
+        revertPageBreakSpacing();
+        revertPageBreakSpacing = null;
+      }
 
       window.scrollTo(0, originalScrollPos);
 
@@ -275,6 +303,9 @@ export const exportToPdf = async (
       pdf.save(cleanFilename);
       return true;
     } catch (err) {
+      if (revertPageBreakSpacing) {
+        revertPageBreakSpacing();
+      }
       console.error('Error in element-based PDF export:', err);
     }
   }
@@ -318,9 +349,13 @@ export const generatePdfBase64 = async (
     return null;
   }
 
+  let revertPageBreakSpacing: (() => void) | null = null;
   try {
     const originalScrollPos = window.scrollY;
     window.scrollTo(0, 0);
+
+    revertPageBreakSpacing = applyPageBreakSpacing(element);
+    await new Promise((r) => setTimeout(r, 60));
 
     const canvas = await html2canvas(element, {
       scale: 2,
@@ -332,6 +367,11 @@ export const generatePdfBase64 = async (
       scrollY: 0,
       windowWidth: element.scrollWidth || 800,
     });
+
+    if (revertPageBreakSpacing) {
+      revertPageBreakSpacing();
+      revertPageBreakSpacing = null;
+    }
 
     window.scrollTo(0, originalScrollPos);
 
@@ -360,6 +400,9 @@ export const generatePdfBase64 = async (
 
     return convertPdfToBase64Result(pdf, filename);
   } catch (err) {
+    if (revertPageBreakSpacing) {
+      revertPageBreakSpacing();
+    }
     console.error('Error generating PDF Base64 from element:', err);
     return null;
   }

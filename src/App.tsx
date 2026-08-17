@@ -42,6 +42,7 @@ import {
   apiCreateInvoice,
   apiUpdateInvoice,
   apiDeleteInvoice,
+  apiSyncAllData,
 } from './api/client';
 import {
   getDecryptedItem,
@@ -349,10 +350,31 @@ export default function App() {
           ]);
 
           if (isMounted) {
-            if (fetchedCustomers && fetchedCustomers.length > 0) setCustomers(fetchedCustomers);
-            if (fetchedSphs && fetchedSphs.length > 0) setSphList(fetchedSphs);
-            if (fetchedPkss && fetchedPkss.length > 0) setPksList(fetchedPkss);
-            if (fetchedInvoices && fetchedInvoices.length > 0) setInvoices(fetchedInvoices);
+            // Merge or populate state & sync server if client has newer local records
+            if (fetchedCustomers && fetchedCustomers.length > 0) {
+              setCustomers(fetchedCustomers);
+            } else if (customers.length > 0) {
+              apiSyncAllData({ customers }).catch(() => {});
+            }
+
+            if (fetchedSphs && fetchedSphs.length > 0) {
+              setSphList(fetchedSphs);
+            } else if (sphList.length > 0) {
+              apiSyncAllData({ sphs: sphList }).catch(() => {});
+            }
+
+            if (fetchedPkss && fetchedPkss.length > 0) {
+              setPksList(fetchedPkss);
+            } else if (pksList.length > 0) {
+              apiSyncAllData({ pkss: pksList }).catch(() => {});
+            }
+
+            if (fetchedInvoices && fetchedInvoices.length > 0) {
+              setInvoices(fetchedInvoices);
+            } else if (invoices.length > 0) {
+              apiSyncAllData({ invoices }).catch(() => {});
+            }
+
             setD1Status('connected');
           }
         } else {
@@ -586,6 +608,9 @@ export default function App() {
     addActivityLog('Status Diubah', 'SPH', sph.sphNumber, `SPH dikonversi menjadi Kontrak PKS No. ${newPksNumber}`);
     addActivityLog('Dibuat', 'PKS', newPksNumber, `PKS diterbitkan dari hasil konversi SPH ${sph.sphNumber}`);
 
+    apiCreatePKS(newPks).catch((e) => console.error('D1 Create PKS Error:', e));
+    apiUpdateSPH(sph.id, updatedSph).catch((e) => console.error('D1 Update SPH Error:', e));
+
     // Redirect to PKS view
     setActiveTab('pks');
     alert(`Berhasil! SPH ${sph.sphNumber} telah dikonversi menjadi Perjanjian Kerja Sama (PKS) No. ${newPksNumber}`);
@@ -643,6 +668,9 @@ export default function App() {
 
     addActivityLog('Status Diubah', 'SPH', sph.sphNumber, `SPH dikonversi menjadi Invoice Tagihan No. ${newInvoiceNumber}`);
     addActivityLog('Dibuat', 'Invoice', newInvoiceNumber, `Invoice diterbitkan dari hasil konversi SPH ${sph.sphNumber}`);
+
+    apiCreateInvoice(newInvoice).catch((e) => console.error('D1 Create Invoice Error:', e));
+    apiUpdateSPH(sph.id, updatedSph).catch((e) => console.error('D1 Update SPH Error:', e));
 
     // Redirect to Invoice view
     setActiveTab('invoices');

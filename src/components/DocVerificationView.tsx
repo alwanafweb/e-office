@@ -96,24 +96,28 @@ export const DocVerificationView: React.FC<DocVerificationViewProps> = ({
 
   // Main search/verification engine logic
   const verifyDocumentByQuery = async (queryStr: string, fileName?: string) => {
-    const cleanQuery = queryStr.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (!cleanQuery) return;
+    if (!queryStr && !fileName) return;
+
+    let decodedQuery = queryStr.trim();
+    try {
+      decodedQuery = decodeURIComponent(decodedQuery);
+    } catch {
+      // ignore
+    }
+
+    const cleanQuery = decodedQuery.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!cleanQuery && !fileName) return;
 
     setIsScanning(true);
-    setResult({ status: 'IDLE' });
+    setScanStep('Memverifikasi nomor dokumen dengan Database Server PT. LDI...');
 
-    // Animated verification steps
-    setScanStep('Menghubungkan ke Database Server PT. LDI...');
-    setTimeout(() => {
-      setScanStep('Memeriksa Indeks Nomor SPH, PKS & Invoice...');
-      setTimeout(() => {
-        setScanStep('Memverifikasi Tanda Tangan Digital SHA-256...');
-        setTimeout(async () => {
-          await executeCheck(cleanQuery, queryStr, fileName);
-          setIsScanning(false);
-        }, 500);
-      }, 400);
-    }, 300);
+    try {
+      await executeCheck(cleanQuery, decodedQuery, fileName);
+    } catch (err) {
+      console.warn('Verification process error:', err);
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   const executeCheck = async (cleanQuery: string, originalQuery: string, fileName?: string) => {

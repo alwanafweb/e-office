@@ -26,6 +26,181 @@ async function startServer() {
     invoices: [],
   };
 
+  const seedDatabaseIfEmpty = () => {
+    if (db.sphs.length === 0 && db.pkss.length === 0 && db.invoices.length === 0) {
+      db.customers = [
+        {
+          id: 'cust-1',
+          companyName: 'Bank Mandiri (Persero) Tbk',
+          address: 'Plaza Mandiri, Jl. Jend. Gatot Subroto Kav. 36-38, Jakarta Selatan 12190',
+          contactPerson: 'Bambang Sudarmono, M.Kom',
+          position: 'VP IT Infrastructure',
+          email: 'procurement@bankmandiri.co.id',
+          phone: '021-5265045',
+          npwp: '01.000.013.1-093.000',
+          industry: 'Perbankan & Keuangan',
+          status: 'Aktif',
+          totalContractValue: 180000000,
+        },
+        {
+          id: 'cust-2',
+          companyName: 'PT. Telekomunikasi Nusantara Digital',
+          address: 'Gedung Cyber 2 Tower Lt. 18, Jl. HR Rasuna Said, Jakarta Selatan 12950',
+          contactPerson: 'Hendra Wijaya, S.Kom',
+          position: 'Chief Technology Officer',
+          email: 'it@nusantaradigital.co.id',
+          phone: '021-29008899',
+          npwp: '02.441.882.3-014.000',
+          industry: 'Teknologi & ISP',
+          status: 'Aktif',
+          totalContractValue: 120000000,
+        },
+      ];
+
+      db.sphs = [
+        {
+          id: 'sph-default-1',
+          sphNumber: 'SPH/2026/08/001',
+          customerId: 'cust-1',
+          customerName: 'Bank Mandiri (Persero) Tbk',
+          customerAddress: 'Plaza Mandiri, Jl. Jend. Gatot Subroto Kav. 36-38, Jakarta Selatan 12190',
+          customerPhone: '021-5265045',
+          customerEmail: 'procurement@bankmandiri.co.id',
+          customerRepresentative: 'Bambang Sudarmono, M.Kom',
+          date: '2026-08-17',
+          validityDays: 14,
+          items: [
+            {
+              id: 'it-1',
+              name: 'Dedicated Internet 1 Gbps Metro-E 1:1 Low Latency',
+              description: 'Koneksi fiber optic dedicated symmetric 1 Gbps, SLA 99.98% dengan backup link failover otomatis',
+              qty: 1,
+              unit: 'Bulan',
+              price: 15000000,
+              discount: 0,
+            },
+            {
+              id: 'it-2',
+              name: 'Managed Cloud SD-WAN & Enterprise Firewall Fortinet',
+              description: 'Penyewaan dan manajemen perangkat NGFW High-Availability, 24/7 Security Operations Center',
+              qty: 1,
+              unit: 'Paket',
+              price: 7500000,
+              discount: 0,
+            },
+          ],
+          subtotal: 22500000,
+          discountTotal: 0,
+          taxPercent: 11,
+          taxAmount: 2475000,
+          grandTotal: 24975000,
+          status: 'Diterbitkan',
+          notes: 'Harga sudah termasuk instalasi, SLA 99.9%, dan dukungan teknis 24/7 NOC PT. LDI.',
+          signedBy: 'Irwan Setiawan, S.T.',
+        },
+      ];
+
+      db.pkss = [
+        {
+          id: 'pks-default-1',
+          pksNumber: 'PKS/2026/08/001',
+          sphReferenceNumber: 'SPH/2026/08/001',
+          customerId: 'cust-1',
+          customerName: 'Bank Mandiri (Persero) Tbk',
+          customerRepresentative: 'Bambang Sudarmono, M.Kom',
+          customerRepPosition: 'VP Information Technology Infrastructure',
+          customerAddress: 'Plaza Mandiri, Jl. Jend. Gatot Subroto Kav. 36-38, Jakarta Selatan 12190',
+          startDate: '2026-08-17',
+          endDate: '2027-08-16',
+          contractDurationMonths: 12,
+          serviceItems: [
+            {
+              id: 'it-1',
+              name: 'Dedicated Internet 1 Gbps Metro-E 1:1 Low Latency',
+              description: 'Koneksi fiber optic dedicated symmetric 1 Gbps, SLA 99.98% dengan backup link failover otomatis',
+              qty: 1,
+              unit: 'Bulan',
+              price: 15000000,
+              discount: 0,
+            },
+          ],
+          monthlyValue: 15000000,
+          totalContractValue: 180000000,
+          slaPercent: 99.9,
+          clauses: [
+            {
+              article: 1,
+              title: 'RUANG LINGKUP PEKERJAAN & INFRASTRUKTUR',
+              content: 'PIHAK PERTAMA (PT. LINTAS DATA INTERNASIONAL) sepakat menyediakan layanan Dedicated Internet 1 Gbps Metro-E kepada PIHAK KEDUA (Bank Mandiri) sesuai standar SLA 99.9%.',
+            },
+            {
+              article: 2,
+              title: 'NILAI KONTRAK & SKEMA PEMBAYARAN',
+              content: 'Nilai langganan rutin adalah sebesar Rp 15.000.000,- per bulan belum termasuk PPN 11%. Pembayaran dilakukan paling lambat tanggal 10 setiap bulannya ke rekening Bank BCA PT. LDI.',
+            },
+            {
+              article: 3,
+              title: 'SERVICE LEVEL AGREEMENT (SLA 99.9%)',
+              content: 'PIHAK PERTAMA menjamin ketersediaan jaringan dan server (Uptime) sebesar 99.9% setiap bulan dengan garansi dukungan teknis 24/7.',
+            },
+          ],
+          status: 'Aktif',
+          party1Signed: true,
+          party1SignerName: 'Irwan Setiawan, S.T.',
+          party1SignerPosition: 'Direktur Utama',
+          party2Signed: true,
+          party2SignerName: 'Bambang Sudarmono, M.Kom',
+          party2SignerPosition: 'VP IT Infrastructure',
+          signedDate: '2026-08-17',
+        },
+      ];
+
+      db.invoices = [
+        {
+          id: 'inv-default-1',
+          invoiceNumber: 'INV/2026/08/001',
+          customerId: 'cust-1',
+          customerName: 'Bank Mandiri (Persero) Tbk',
+          customerAddress: 'Plaza Mandiri, Jl. Jend. Gatot Subroto Kav. 36-38, Jakarta Selatan 12190',
+          customerPhone: '021-5265045',
+          customerEmail: 'procurement@bankmandiri.co.id',
+          customerRepresentative: 'Bambang Sudarmono, M.Kom',
+          sphReference: 'SPH/2026/08/001',
+          issueDate: '2026-08-17',
+          dueDate: '2026-08-31',
+          items: [
+            {
+              id: 'it-1',
+              name: 'Dedicated Internet 1 Gbps Metro-E 1:1 Low Latency (Periode Agustus 2026)',
+              description: 'Layanan internet dedicated fiber optic korporasi PT. LDI',
+              qty: 1,
+              unit: 'Bulan',
+              price: 15000000,
+              discount: 0,
+            },
+          ],
+          subtotal: 15000000,
+          discountTotal: 0,
+          taxPercent: 11,
+          taxAmount: 1650000,
+          grandTotal: 16650000,
+          status: 'Belum Bayar',
+          bankInfo: {
+            bankName: 'Bank Central Asia (BCA)',
+            accountNumber: '8830-1928-33',
+            accountHolder: 'PT LINTAS DATA INTERNASIONAL',
+            branch: 'KCP BSD Green Office Park',
+            notes: 'Transfer Rekening Utama untuk Layanan Internet & Cloud',
+          },
+          signedByFinance: 'Siti Rahmawati, S.E.',
+        },
+      ];
+
+      saveDatabase();
+      console.log('[DB SEED] Database seeded with default official documents (SPH/2026/08/001, PKS/2026/08/001, INV/2026/08/001).');
+    }
+  };
+
   const loadDatabase = () => {
     try {
       if (!fs.existsSync(DATA_DIR)) {
@@ -42,8 +217,10 @@ async function startServer() {
           console.log(`[DB PERSISTENCE] Loaded ${db.customers.length} customers, ${db.sphs.length} SPHs, ${db.pkss.length} PKSs, ${db.invoices.length} invoices from disk.`);
         }
       }
+      seedDatabaseIfEmpty();
     } catch (err) {
       console.warn('[DB PERSISTENCE] Failed to load database from disk:', err);
+      seedDatabaseIfEmpty();
     }
   };
 

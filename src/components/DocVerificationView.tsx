@@ -19,6 +19,7 @@ import {
 import { CompanyProfile, Invoice, PKS, SPH } from '../types';
 import { formatIDR, formatDateIndonesian } from '../utils/formatters';
 import { QRCodeBadge } from './QRCodeBadge';
+import { apiVerifyDocument, apiGetSPHs, apiGetPKSs, apiGetInvoices } from '../api/client';
 
 interface DocVerificationViewProps {
   sphList: SPH[];
@@ -52,13 +53,6 @@ export const DocVerificationView: React.FC<DocVerificationViewProps> = ({
   const [scanStep, setScanStep] = useState('');
   const [isDragging, setIsDragging] = useState(false);
 
-  useEffect(() => {
-    if (initialDocQuery) {
-      setSearchQuery(initialDocQuery);
-      verifyDocumentByQuery(initialDocQuery);
-    }
-  }, [initialDocQuery]);
-  
   const [result, setResult] = useState<{
     status: 'IDLE' | 'VALID' | 'INVALID';
     type?: 'SPH' | 'PKS' | 'Invoice';
@@ -86,8 +80,22 @@ export const DocVerificationView: React.FC<DocVerificationViewProps> = ({
     },
   ]);
 
+  useEffect(() => {
+    if (initialDocQuery) {
+      setSearchQuery(initialDocQuery);
+      verifyDocumentByQuery(initialDocQuery);
+    }
+  }, [initialDocQuery]);
+
+  // Re-run verification automatically if local state lists (sphList/pksList/invoices) update and current result is not yet VALID
+  useEffect(() => {
+    if (searchQuery && result.status !== 'VALID' && !isScanning) {
+      executeCheck(searchQuery.trim().toLowerCase().replace(/[^a-z0-9]/g, ''), searchQuery);
+    }
+  }, [sphList, pksList, invoices]);
+
   // Main search/verification engine logic
-  const verifyDocumentByQuery = (queryStr: string, fileName?: string) => {
+  const verifyDocumentByQuery = async (queryStr: string, fileName?: string) => {
     const cleanQuery = queryStr.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
     if (!cleanQuery) return;
 
@@ -100,20 +108,25 @@ export const DocVerificationView: React.FC<DocVerificationViewProps> = ({
       setScanStep('Memeriksa Indeks Nomor SPH, PKS & Invoice...');
       setTimeout(() => {
         setScanStep('Memverifikasi Tanda Tangan Digital SHA-256...');
-        setTimeout(() => {
-          executeCheck(cleanQuery, queryStr, fileName);
+        setTimeout(async () => {
+          await executeCheck(cleanQuery, queryStr, fileName);
           setIsScanning(false);
-        }, 600);
-      }, 500);
-    }, 400);
+        }, 500);
+      }, 400);
+    }, 300);
   };
 
-  const executeCheck = (cleanQuery: string, originalQuery: string, fileName?: string) => {
-    // 1. Search in SPH
+  const executeCheck = async (cleanQuery: string, originalQuery: string, fileName?: string) => {
+    // 1. Search locally in SPH
     const matchedSph = sphList.find((s) => {
-      const sphNum = s.sphNumber.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const idStr = s.id.toLowerCase().replace(/[^a-z0-9]/g, '');
-      return sphNum.includes(cleanQuery) || idStr.includes(cleanQuery) || (fileName && fileName.toLowerCase().includes(sphNum));
+      const sphNum = (s.sphNumber || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const idStr = (s.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return (
+        sphNum === cleanQuery ||
+        idStr === cleanQuery ||
+        (cleanQuery.length >= 4 && (sphNum.includes(cleanQuery) || cleanQuery.includes(sphNum) || idStr.includes(cleanQuery))) ||
+        (fileName && fileName.toLowerCase().includes(sphNum))
+      );
     });
 
     if (matchedSph) {
@@ -122,17 +135,22 @@ export const DocVerificationView: React.FC<DocVerificationViewProps> = ({
         type: 'SPH',
         data: matchedSph,
         matchedQuery: matchedSph.sphNumber,
-        hash: `SHA256-LDI-SPH-${matchedSph.id.slice(-6)}-${Date.now().toString(36).toUpperCase()}`,
+        hash: `SHA256-LDI-SPH-${(matchedSph.id || 'SPH').slice(-6)}-${Date.now().toString(36).toUpperCase()}`,
       });
       addLog(matchedSph.sphNumber, 'Surat Penawaran Harga (SPH)', 'VALID', matchedSph.customerName);
       return;
     }
 
-    // 2. Search in PKS
+    // 2. Search locally in PKS
     const matchedPks = pksList.find((p) => {
-      const pksNum = p.pksNumber.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const idStr = p.id.toLowerCase().replace(/[^a-z0-9]/g, '');
-      return pksNum.includes(cleanQuery) || idStr.includes(cleanQuery) || (fileName && fileName.toLowerCase().includes(pksNum));
+      const pksNum = (p.pksNumber || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const idStr = (p.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return (
+        pksNum === cleanQuery ||
+        idStr === cleanQuery ||
+        (cleanQuery.length >= 4 && (pksNum.includes(cleanQuery) || cleanQuery.includes(pksNum) || idStr.includes(cleanQuery))) ||
+        (fileName && fileName.toLowerCase().includes(pksNum))
+      );
     });
 
     if (matchedPks) {
@@ -141,17 +159,22 @@ export const DocVerificationView: React.FC<DocVerificationViewProps> = ({
         type: 'PKS',
         data: matchedPks,
         matchedQuery: matchedPks.pksNumber,
-        hash: `SHA256-LDI-PKS-${matchedPks.id.slice(-6)}-${Date.now().toString(36).toUpperCase()}`,
+        hash: `SHA256-LDI-PKS-${(matchedPks.id || 'PKS').slice(-6)}-${Date.now().toString(36).toUpperCase()}`,
       });
       addLog(matchedPks.pksNumber, 'Perjanjian Kerja Sama (PKS)', 'VALID', matchedPks.customerName);
       return;
     }
 
-    // 3. Search in Invoices
+    // 3. Search locally in Invoices
     const matchedInv = invoices.find((i) => {
-      const invNum = i.invoiceNumber.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const idStr = i.id.toLowerCase().replace(/[^a-z0-9]/g, '');
-      return invNum.includes(cleanQuery) || idStr.includes(cleanQuery) || (fileName && fileName.toLowerCase().includes(invNum));
+      const invNum = (i.invoiceNumber || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const idStr = (i.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return (
+        invNum === cleanQuery ||
+        idStr === cleanQuery ||
+        (cleanQuery.length >= 4 && (invNum.includes(cleanQuery) || cleanQuery.includes(invNum) || idStr.includes(cleanQuery))) ||
+        (fileName && fileName.toLowerCase().includes(invNum))
+      );
     });
 
     if (matchedInv) {
@@ -160,10 +183,95 @@ export const DocVerificationView: React.FC<DocVerificationViewProps> = ({
         type: 'Invoice',
         data: matchedInv,
         matchedQuery: matchedInv.invoiceNumber,
-        hash: `SHA256-LDI-INV-${matchedInv.id.slice(-6)}-${Date.now().toString(36).toUpperCase()}`,
+        hash: `SHA256-LDI-INV-${(matchedInv.id || 'INV').slice(-6)}-${Date.now().toString(36).toUpperCase()}`,
       });
       addLog(matchedInv.invoiceNumber, 'Tagihan Invoice', 'VALID', matchedInv.customerName);
       return;
+    }
+
+    // 4. Fallback: Query Server API directly
+    try {
+      const serverRes = await apiVerifyDocument(originalQuery);
+      if (serverRes && serverRes.valid && serverRes.data) {
+        setResult({
+          status: 'VALID',
+          type: serverRes.type,
+          data: serverRes.data,
+          matchedQuery: serverRes.matchedQuery || originalQuery,
+          hash: serverRes.hash || `SHA256-LDI-${serverRes.type}-${Date.now().toString(36).toUpperCase()}`,
+        });
+        const custName = (serverRes.data as any).customerName || 'Pelanggan Terverifikasi';
+        const docLabel = serverRes.type === 'SPH' ? 'Surat Penawaran Harga (SPH)' : serverRes.type === 'PKS' ? 'Perjanjian Kerja Sama (PKS)' : 'Tagihan Invoice';
+        addLog(serverRes.matchedQuery || originalQuery, docLabel, 'VALID', custName);
+        return;
+      }
+    } catch (apiErr) {
+      console.warn('API verification check error:', apiErr);
+    }
+
+    // 5. Deep scan fallback: Fetch remote collections from server
+    try {
+      const [remoteSPHs, remotePKSs, remoteInvoices] = await Promise.allSettled([
+        apiGetSPHs(),
+        apiGetPKSs(),
+        apiGetInvoices(),
+      ]);
+
+      if (remoteSPHs.status === 'fulfilled' && Array.isArray(remoteSPHs.value)) {
+        const found = remoteSPHs.value.find((s) => {
+          const sNum = (s.sphNumber || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          return sNum === cleanQuery || sNum.includes(cleanQuery) || cleanQuery.includes(sNum);
+        });
+        if (found) {
+          setResult({
+            status: 'VALID',
+            type: 'SPH',
+            data: found,
+            matchedQuery: found.sphNumber,
+            hash: `SHA256-LDI-SPH-${(found.id || 'SPH').slice(-6)}-${Date.now().toString(36).toUpperCase()}`,
+          });
+          addLog(found.sphNumber, 'Surat Penawaran Harga (SPH)', 'VALID', found.customerName);
+          return;
+        }
+      }
+
+      if (remotePKSs.status === 'fulfilled' && Array.isArray(remotePKSs.value)) {
+        const found = remotePKSs.value.find((p) => {
+          const pNum = (p.pksNumber || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          return pNum === cleanQuery || pNum.includes(cleanQuery) || cleanQuery.includes(pNum);
+        });
+        if (found) {
+          setResult({
+            status: 'VALID',
+            type: 'PKS',
+            data: found,
+            matchedQuery: found.pksNumber,
+            hash: `SHA256-LDI-PKS-${(found.id || 'PKS').slice(-6)}-${Date.now().toString(36).toUpperCase()}`,
+          });
+          addLog(found.pksNumber, 'Perjanjian Kerja Sama (PKS)', 'VALID', found.customerName);
+          return;
+        }
+      }
+
+      if (remoteInvoices.status === 'fulfilled' && Array.isArray(remoteInvoices.value)) {
+        const found = remoteInvoices.value.find((i) => {
+          const iNum = (i.invoiceNumber || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          return iNum === cleanQuery || iNum.includes(cleanQuery) || cleanQuery.includes(iNum);
+        });
+        if (found) {
+          setResult({
+            status: 'VALID',
+            type: 'Invoice',
+            data: found,
+            matchedQuery: found.invoiceNumber,
+            hash: `SHA256-LDI-INV-${(found.id || 'INV').slice(-6)}-${Date.now().toString(36).toUpperCase()}`,
+          });
+          addLog(found.invoiceNumber, 'Tagihan Invoice', 'VALID', found.customerName);
+          return;
+        }
+      }
+    } catch (deepScanErr) {
+      console.warn('Deep scan verification error:', deepScanErr);
     }
 
     // If no match found -> INVALID

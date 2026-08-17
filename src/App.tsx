@@ -91,16 +91,62 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Auto detect ?doc= or ?verify= parameter in URL for instant verification
+  // Auto detect ?doc=, ?verify=, or /verify routes in URL for instant verification
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const docParam = params.get('doc') || params.get('verify');
-      if (docParam) {
-        setInitialVerifyQuery(docParam);
-        setActiveTab('verifyDoc');
+    const detectVerificationQuery = () => {
+      if (typeof window !== 'undefined') {
+        const search = window.location.search;
+        const hash = window.location.hash;
+        const pathname = window.location.pathname;
+
+        const searchParams = new URLSearchParams(search);
+        let docParam =
+          searchParams.get('doc') ||
+          searchParams.get('verify') ||
+          searchParams.get('d') ||
+          searchParams.get('q') ||
+          searchParams.get('number') ||
+          searchParams.get('id');
+
+        // Check hash query params if not found in search params (e.g. #/verify?doc=...)
+        if (!docParam && hash.includes('?')) {
+          const hashSearch = hash.split('?')[1];
+          const hashParams = new URLSearchParams(hashSearch);
+          docParam =
+            hashParams.get('doc') ||
+            hashParams.get('verify') ||
+            hashParams.get('d') ||
+            hashParams.get('q') ||
+            hashParams.get('number') ||
+            hashParams.get('id');
+        }
+
+        // Check path /verify/DOC_NUMBER
+        if (!docParam && pathname.toLowerCase().startsWith('/verify/')) {
+          const pathPart = pathname.substring('/verify/'.length);
+          if (pathPart && pathPart.trim() !== '') {
+            docParam = decodeURIComponent(pathPart.trim());
+          }
+        }
+
+        if (docParam) {
+          setInitialVerifyQuery(docParam);
+          setActiveTab('verifyDoc');
+        } else if (pathname.toLowerCase().startsWith('/verify') || hash.toLowerCase().startsWith('#/verify')) {
+          setActiveTab('verifyDoc');
+        }
       }
-    }
+    };
+
+    detectVerificationQuery();
+
+    window.addEventListener('popstate', detectVerificationQuery);
+    window.addEventListener('hashchange', detectVerificationQuery);
+
+    return () => {
+      window.removeEventListener('popstate', detectVerificationQuery);
+      window.removeEventListener('hashchange', detectVerificationQuery);
+    };
   }, []);
 
   // Detect /loginadmin path, hash or search parameter to trigger Admin Login Modal

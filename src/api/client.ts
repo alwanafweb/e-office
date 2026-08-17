@@ -266,3 +266,22 @@ export const apiUploadPdf = async (
   });
 };
 
+// ==========================================
+// DOCUMENT VERIFICATION API
+// ==========================================
+export interface VerifyDocumentResponse {
+  valid: boolean;
+  type?: 'SPH' | 'PKS' | 'Invoice';
+  matchedQuery?: string;
+  data?: SPH | PKS | Invoice;
+  hash?: string;
+  verifiedAt?: string;
+  error?: string;
+  query?: string;
+}
+
+export const apiVerifyDocument = async (docQuery: string): Promise<VerifyDocumentResponse> => {
+  const clean = encodeURIComponent(docQuery.trim());
+  return apiFetch<VerifyDocumentResponse>(`/api/verify?doc=${clean}`);
+};
+

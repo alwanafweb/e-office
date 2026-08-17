@@ -10,7 +10,10 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-  // In-memory database store for local server API
+  // Persistent database store for local server API
+  const DATA_DIR = path.join(process.cwd(), 'data');
+  const DB_FILE = path.join(DATA_DIR, 'db.json');
+
   const db: {
     customers: any[];
     sphs: any[];
@@ -23,12 +26,123 @@ async function startServer() {
     invoices: [],
   };
 
+  const loadDatabase = () => {
+    try {
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
+      if (fs.existsSync(DB_FILE)) {
+        const raw = fs.readFileSync(DB_FILE, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (parsed) {
+          if (Array.isArray(parsed.customers)) db.customers = parsed.customers;
+          if (Array.isArray(parsed.sphs)) db.sphs = parsed.sphs;
+          if (Array.isArray(parsed.pkss)) db.pkss = parsed.pkss;
+          if (Array.isArray(parsed.invoices)) db.invoices = parsed.invoices;
+          console.log(`[DB PERSISTENCE] Loaded ${db.customers.length} customers, ${db.sphs.length} SPHs, ${db.pkss.length} PKSs, ${db.invoices.length} invoices from disk.`);
+        }
+      }
+    } catch (err) {
+      console.warn('[DB PERSISTENCE] Failed to load database from disk:', err);
+    }
+  };
+
+  const saveDatabase = () => {
+    try {
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
+      fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf-8');
+    } catch (err) {
+      console.warn('[DB PERSISTENCE] Failed to save database to disk:', err);
+    }
+  };
+
+  // Initial load from disk
+  loadDatabase();
+
   // Health Check Endpoint
   app.get('/api/health', (req, res) => {
     res.json({
       status: 'online',
       database: 'local-express',
+      records: {
+        customers: db.customers.length,
+        sphs: db.sphs.length,
+        pkss: db.pkss.length,
+        invoices: db.invoices.length,
+      },
       timestamp: new Date().toISOString(),
+    });
+  });
+
+  // Dedicated Universal Verification Endpoint (Accessible for public verification from emails and QR codes)
+  app.get(['/api/verify', '/api/verify-doc', '/api/verify/:docId'], (req, res) => {
+    const rawQuery = (req.query.doc || req.query.verify || req.query.q || req.query.number || req.query.id || req.params.docId || '').toString().trim();
+    if (!rawQuery) {
+      return res.status(400).json({ valid: false, error: 'Document query parameter (?doc=...) is required' });
+    }
+
+    const cleanQuery = rawQuery.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    // 1. Search in SPH
+    const matchedSph = db.sphs.find((s: any) => {
+      const sNum = (s.sphNumber || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const sId = (s.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return sNum === cleanQuery || sId === cleanQuery || (cleanQuery.length >= 4 && (sNum.includes(cleanQuery) || cleanQuery.includes(sNum) || sId.includes(cleanQuery)));
+    });
+
+    if (matchedSph) {
+      return res.json({
+        valid: true,
+        type: 'SPH',
+        matchedQuery: matchedSph.sphNumber,
+        data: matchedSph,
+        hash: `SHA256-LDI-SPH-${(matchedSph.id || 'SPH').slice(-6)}-${Buffer.from(matchedSph.sphNumber || '').toString('hex').slice(0, 8).toUpperCase()}`,
+        verifiedAt: new Date().toISOString(),
+      });
+    }
+
+    // 2. Search in PKS
+    const matchedPks = db.pkss.find((p: any) => {
+      const pNum = (p.pksNumber || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const pId = (p.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return pNum === cleanQuery || pId === cleanQuery || (cleanQuery.length >= 4 && (pNum.includes(cleanQuery) || cleanQuery.includes(pNum) || pId.includes(cleanQuery)));
+    });
+
+    if (matchedPks) {
+      return res.json({
+        valid: true,
+        type: 'PKS',
+        matchedQuery: matchedPks.pksNumber,
+        data: matchedPks,
+        hash: `SHA256-LDI-PKS-${(matchedPks.id || 'PKS').slice(-6)}-${Buffer.from(matchedPks.pksNumber || '').toString('hex').slice(0, 8).toUpperCase()}`,
+        verifiedAt: new Date().toISOString(),
+      });
+    }
+
+    // 3. Search in Invoices
+    const matchedInv = db.invoices.find((i: any) => {
+      const iNum = (i.invoiceNumber || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const iId = (i.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return iNum === cleanQuery || iId === cleanQuery || (cleanQuery.length >= 4 && (iNum.includes(cleanQuery) || cleanQuery.includes(iNum) || iId.includes(cleanQuery)));
+    });
+
+    if (matchedInv) {
+      return res.json({
+        valid: true,
+        type: 'Invoice',
+        matchedQuery: matchedInv.invoiceNumber,
+        data: matchedInv,
+        hash: `SHA256-LDI-INV-${(matchedInv.id || 'INV').slice(-6)}-${Buffer.from(matchedInv.invoiceNumber || '').toString('hex').slice(0, 8).toUpperCase()}`,
+        verifiedAt: new Date().toISOString(),
+      });
+    }
+
+    return res.status(404).json({
+      valid: false,
+      query: rawQuery,
+      error: `Dokumen dengan nomor "${rawQuery}" tidak ditemukan dalam database resmi PT. LDI`,
     });
   });
 
@@ -45,7 +159,13 @@ async function startServer() {
 
   app.post('/api/customers', (req, res) => {
     const customer = { ...req.body, id: req.body.id || `cust-${Date.now()}`, createdAt: new Date().toISOString() };
-    db.customers.push(customer);
+    const existingIdx = db.customers.findIndex((c: any) => c.id === customer.id);
+    if (existingIdx !== -1) {
+      db.customers[existingIdx] = customer;
+    } else {
+      db.customers.push(customer);
+    }
+    saveDatabase();
     res.status(201).json(customer);
   });
 
@@ -53,14 +173,17 @@ async function startServer() {
     const idx = db.customers.findIndex((c: any) => c.id === req.params.id);
     if (idx === -1) {
       db.customers.push({ ...req.body, id: req.params.id });
+      saveDatabase();
       return res.json(req.body);
     }
     db.customers[idx] = { ...db.customers[idx], ...req.body };
+    saveDatabase();
     res.json(db.customers[idx]);
   });
 
   app.delete('/api/customers/:id', (req, res) => {
     db.customers = db.customers.filter((c: any) => c.id !== req.params.id);
+    saveDatabase();
     res.json({ success: true, id: req.params.id });
   });
 
@@ -77,7 +200,13 @@ async function startServer() {
 
   app.post('/api/sph', (req, res) => {
     const sph = { ...req.body, id: req.body.id || `sph-${Date.now()}` };
-    db.sphs.push(sph);
+    const existingIdx = db.sphs.findIndex((s: any) => s.id === sph.id || (sph.sphNumber && s.sphNumber === sph.sphNumber));
+    if (existingIdx !== -1) {
+      db.sphs[existingIdx] = { ...db.sphs[existingIdx], ...sph };
+    } else {
+      db.sphs.push(sph);
+    }
+    saveDatabase();
     res.status(201).json(sph);
   });
 
@@ -85,14 +214,17 @@ async function startServer() {
     const idx = db.sphs.findIndex((s: any) => s.id === req.params.id);
     if (idx === -1) {
       db.sphs.push({ ...req.body, id: req.params.id });
+      saveDatabase();
       return res.json(req.body);
     }
     db.sphs[idx] = { ...db.sphs[idx], ...req.body };
+    saveDatabase();
     res.json(db.sphs[idx]);
   });
 
   app.delete('/api/sph/:id', (req, res) => {
     db.sphs = db.sphs.filter((s: any) => s.id !== req.params.id);
+    saveDatabase();
     res.json({ success: true, id: req.params.id });
   });
 
@@ -109,7 +241,13 @@ async function startServer() {
 
   app.post('/api/pks', (req, res) => {
     const pks = { ...req.body, id: req.body.id || `pks-${Date.now()}` };
-    db.pkss.push(pks);
+    const existingIdx = db.pkss.findIndex((p: any) => p.id === pks.id || (pks.pksNumber && p.pksNumber === pks.pksNumber));
+    if (existingIdx !== -1) {
+      db.pkss[existingIdx] = { ...db.pkss[existingIdx], ...pks };
+    } else {
+      db.pkss.push(pks);
+    }
+    saveDatabase();
     res.status(201).json(pks);
   });
 
@@ -117,14 +255,17 @@ async function startServer() {
     const idx = db.pkss.findIndex((p: any) => p.id === req.params.id);
     if (idx === -1) {
       db.pkss.push({ ...req.body, id: req.params.id });
+      saveDatabase();
       return res.json(req.body);
     }
     db.pkss[idx] = { ...db.pkss[idx], ...req.body };
+    saveDatabase();
     res.json(db.pkss[idx]);
   });
 
   app.delete('/api/pks/:id', (req, res) => {
     db.pkss = db.pkss.filter((p: any) => p.id !== req.params.id);
+    saveDatabase();
     res.json({ success: true, id: req.params.id });
   });
 
@@ -158,7 +299,13 @@ async function startServer() {
 
   app.post('/api/invoices', (req, res) => {
     const inv = { ...req.body, id: req.body.id || `inv-${Date.now()}` };
-    db.invoices.push(inv);
+    const existingIdx = db.invoices.findIndex((i: any) => i.id === inv.id || (inv.invoiceNumber && i.invoiceNumber === inv.invoiceNumber));
+    if (existingIdx !== -1) {
+      db.invoices[existingIdx] = { ...db.invoices[existingIdx], ...inv };
+    } else {
+      db.invoices.push(inv);
+    }
+    saveDatabase();
     res.status(201).json(inv);
   });
 
@@ -166,14 +313,17 @@ async function startServer() {
     const idx = db.invoices.findIndex((i: any) => i.id === req.params.id);
     if (idx === -1) {
       db.invoices.push({ ...req.body, id: req.params.id });
+      saveDatabase();
       return res.json(req.body);
     }
     db.invoices[idx] = { ...db.invoices[idx], ...req.body };
+    saveDatabase();
     res.json(db.invoices[idx]);
   });
 
   app.delete('/api/invoices/:id', (req, res) => {
     db.invoices = db.invoices.filter((i: any) => i.id !== req.params.id);
+    saveDatabase();
     res.json({ success: true, id: req.params.id });
   });
 
@@ -988,6 +1138,7 @@ async function startServer() {
     if (sphs && Array.isArray(sphs)) db.sphs = sphs;
     if (pkss && Array.isArray(pkss)) db.pkss = pkss;
     if (invoices && Array.isArray(invoices)) db.invoices = invoices;
+    saveDatabase();
     res.json({
       success: true,
       count: (customers?.length || 0) + (sphs?.length || 0) + (pkss?.length || 0) + (invoices?.length || 0),
@@ -1026,6 +1177,7 @@ async function startServer() {
     db.sphs = mergeCollection(sphs, db.sphs);
     db.pkss = mergeCollection(pkss, db.pkss);
     db.invoices = mergeCollection(invoices, db.invoices);
+    saveDatabase();
 
     return res.json({
       success: true,

@@ -4,6 +4,7 @@
  */
 
 import { getWorkerUrl } from './client';
+import { SmtpConfig } from '../types';
 
 export interface EmailAttachment {
   filename: string;
@@ -23,6 +24,8 @@ export interface MailOptions {
   pdfBase64?: string;
   pdfFilename?: string;
   mailketingApiKey?: string;
+  gatewayMode?: 'mailketing' | 'custom_smtp';
+  smtpConfig?: SmtpConfig;
 }
 
 export interface MailServiceResult {
@@ -257,6 +260,8 @@ export async function sendEmail(options: MailOptions): Promise<MailServiceResult
     pdfBase64,
     pdfFilename,
     mailketingApiKey,
+    gatewayMode,
+    smtpConfig,
   } = options;
 
   const baseUrl = getWorkerUrl();
@@ -280,6 +285,8 @@ export async function sendEmail(options: MailOptions): Promise<MailServiceResult
         pdfBase64,
         pdfFilename,
         mailketingApiKey,
+        gatewayMode,
+        smtpConfig,
       }),
     });
 

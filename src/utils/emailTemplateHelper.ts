@@ -727,11 +727,17 @@ export async function triggerAutoDocumentEmail(params: {
   });
 
   // 8. Resolve sender identity & CC
-  const senderName = companyProfile?.name || 'PT. LINTAS DATA INTERNASIONAL';
-  const senderEmail = companyProfile?.mailketingSenderEmail || companyProfile?.email || 'alwanemail@gmail.com';
+  const isSmtpMode = companyProfile?.emailGatewayMode === 'custom_smtp' || (companyProfile?.smtpConfig?.enabled && companyProfile.emailGatewayMode !== 'mailketing');
+  const senderName = isSmtpMode && companyProfile?.smtpConfig?.fromName
+    ? companyProfile.smtpConfig.fromName
+    : (companyProfile?.name || 'PT. LINTAS DATA INTERNASIONAL');
+  const senderEmail = isSmtpMode && companyProfile?.smtpConfig?.fromEmail
+    ? companyProfile.smtpConfig.fromEmail
+    : (companyProfile?.mailketingSenderEmail || companyProfile?.email || 'alwanemail@gmail.com');
   const ccAddresses = overrideCc !== undefined ? overrideCc : companyProfile?.emailTemplates?.defaultCc;
+  const channelName = isSmtpMode ? `Custom SMTP (${companyProfile?.smtpConfig?.host || 'Relay'})` : 'Mailketing API';
 
-  // 9. Dispatch via Mailketing API
+  // 9. Dispatch via Email Gateway (SMTP / Mailketing)
   try {
     const sendRes = await sendEmail({
       recipient,
@@ -744,14 +750,16 @@ export async function triggerAutoDocumentEmail(params: {
       pdfFilename: fileName,
       attachmentUrl: attachedPdfUrl,
       mailketingApiKey: companyProfile?.mailketingApiKey,
+      gatewayMode: companyProfile?.emailGatewayMode || (isSmtpMode ? 'custom_smtp' : 'mailketing'),
+      smtpConfig: companyProfile?.smtpConfig,
     });
 
     return {
       triggered: true,
       success: sendRes.success,
       message: sendRes.success
-        ? `Notifikasi email & lampiran PDF ${type} #${docNumber} berhasil dikirim secara otomatis ke ${recipient} via Mailketing API.`
-        : `Gagal mengirim email otomatis via Mailketing: ${sendRes.message}`,
+        ? `Notifikasi email & lampiran PDF ${type} #${docNumber} berhasil dikirim secara otomatis ke ${recipient} via ${channelName}.`
+        : `Gagal mengirim email otomatis via ${channelName}: ${sendRes.message}`,
       recipient,
       pdfUrl: attachedPdfUrl,
       docNumber,
@@ -760,7 +768,7 @@ export async function triggerAutoDocumentEmail(params: {
     return {
       triggered: true,
       success: false,
-      message: `Error pengiriman email Mailketing: ${sendErr?.message || sendErr}`,
+      message: `Error pengiriman email ${channelName}: ${sendErr?.message || sendErr}`,
       recipient,
       docNumber,
     };

@@ -177,6 +177,18 @@ export interface EmailTemplates {
   autoSendInvoice?: boolean;
 }
 
+export interface SmtpConfig {
+  enabled?: boolean;
+  host: string;
+  port: number;
+  secure?: boolean;
+  username: string;
+  password?: string;
+  fromName?: string;
+  fromEmail?: string;
+  providerPreset?: 'custom' | 'gmail' | 'office365' | 'sendgrid' | 'brevo' | 'zoho' | 'mailgun';
+}
+
 export interface CompanyProfile {
   name: string;
   legalName: string;
@@ -204,6 +216,8 @@ export interface CompanyProfile {
   defaultStampBase64?: string;
   defaultSignatureBase64?: string;
   emailTemplates?: EmailTemplates;
+  emailGatewayMode?: 'mailketing' | 'custom_smtp';
+  smtpConfig?: SmtpConfig;
   mailketingApiKey?: string;
   mailketingSenderEmail?: string;
 }

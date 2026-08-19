@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import nodemailer from 'nodemailer';
 import { createServer as createViteServer } from 'vite';
 
 async function startServer() {
@@ -850,6 +851,181 @@ async function startServer() {
     return fallbackUrl || '';
   }
 
+  interface ServerEmailAttachment {
+    filename: string;
+    content: string; // base64
+    contentType?: string;
+  }
+
+  interface ServerSmtpConfig {
+    enabled?: boolean;
+    host?: string;
+    port?: number;
+    secure?: boolean;
+    username?: string;
+    password?: string;
+    fromName?: string;
+    fromEmail?: string;
+    providerPreset?: string;
+  }
+
+  // Custom SMTP Relay Dispatcher Helper (Uses nodemailer)
+  async function sendSmtpEmailServer(
+    recipient: string,
+    subject: string,
+    htmlContent: string,
+    senderName?: string,
+    senderEmail?: string,
+    cc?: string,
+    smtpConfig?: ServerSmtpConfig,
+    attachments?: ServerEmailAttachment[],
+    pdfBase64?: string,
+    pdfFilename?: string,
+    attachUrl?: string
+  ) {
+    const timestamp = new Date().toISOString();
+    console.log(`\n================================================================================`);
+    console.log(`[SMTP LOG ${timestamp}] [START SMTP DISPATCH]`);
+
+    const cfg = smtpConfig || {};
+    const host = (cfg.host || 'smtp.gmail.com').trim();
+    const port = Number(cfg.port) || 587;
+    const isSecure = cfg.secure ?? (port === 465);
+    const user = (cfg.username || '').trim();
+    const pass = (cfg.password || '').trim();
+
+    const fromName = (cfg.fromName || senderName || 'PT. LINTAS DATA INTERNASIONAL').trim();
+    const fromEmail = (cfg.fromEmail || senderEmail || user || 'admin@ldi.co.id').trim();
+
+    console.log(` - Host/Port        : ${host}:${port} (secure: ${isSecure})`);
+    console.log(` - Auth User        : ${user || '(none)'}`);
+    console.log(` - Target Recipient : ${recipient}`);
+    console.log(` - CC Recipients    : ${cc || '(none)'}`);
+    console.log(` - From Header      : "${fromName}" <${fromEmail}>`);
+    console.log(` - Subject          : ${subject}`);
+
+    if (!host) {
+      return { success: false, error: 'Host SMTP belum dikonfigurasi.' };
+    }
+
+    try {
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure: isSecure,
+        auth: user && pass ? { user, pass } : undefined,
+        tls: {
+          rejectUnauthorized: false,
+          minVersion: 'TLSv1.2',
+        },
+        connectionTimeout: 15000,
+        greetingTimeout: 10000,
+        socketTimeout: 20000,
+      } as any);
+
+      // Prepare attachments
+      const mailAttachments: Array<{ filename: string; content?: Buffer; path?: string; contentType?: string }> = [];
+
+      // 1. Array attachments
+      if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+        for (const att of attachments) {
+          if (att.content) {
+            let b64 = String(att.content);
+            if (b64.includes(',')) {
+              b64 = b64.substring(b64.indexOf(',') + 1);
+            }
+            mailAttachments.push({
+              filename: att.filename || 'Dokumen_Resmi_LDI.pdf',
+              content: Buffer.from(b64.trim(), 'base64'),
+              contentType: att.contentType || 'application/pdf',
+            });
+          }
+        }
+      }
+
+      // 2. Direct pdfBase64
+      if (mailAttachments.length === 0 && pdfBase64) {
+        let b64 = String(pdfBase64);
+        if (b64.includes(',')) {
+          b64 = b64.substring(b64.indexOf(',') + 1);
+        }
+        mailAttachments.push({
+          filename: pdfFilename || 'Dokumen_Resmi_LDI.pdf',
+          content: Buffer.from(b64.trim(), 'base64'),
+          contentType: 'application/pdf',
+        });
+      }
+
+      // 3. Fallback from cached store
+      if (mailAttachments.length === 0 && attachUrl) {
+        for (const [fId, item] of pdfStore.entries()) {
+          if (attachUrl.includes(fId) || attachUrl.includes(item.filename)) {
+            mailAttachments.push({
+              filename: item.filename,
+              content: item.buffer,
+              contentType: 'application/pdf',
+            });
+            break;
+          }
+        }
+      }
+
+      const ccList = cc
+        ? cc
+            .split(/[,;\n]/)
+            .map((a) => a.trim())
+            .filter((a) => a && a.includes('@'))
+        : undefined;
+
+      const plainText = htmlContent
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+      const mailOptions: nodemailer.SendMailOptions = {
+        from: `"${fromName}" <${fromEmail}>`,
+        to: recipient.trim(),
+        cc: ccList && ccList.length > 0 ? ccList : undefined,
+        replyTo: fromEmail,
+        subject,
+        html: htmlContent,
+        text: plainText,
+        attachments: mailAttachments,
+        headers: {
+          'X-Mailer': 'e-Office LDI SMTP Relay 2026',
+        },
+      };
+
+      console.log(`[SMTP LOG ${timestamp}] Sending message via transporter (attachments: ${mailAttachments.length})...`);
+      const info = await transporter.sendMail(mailOptions);
+
+      console.log(`[SMTP LOG ${timestamp}] [SUCCESS] Message sent! MessageId: ${info.messageId}`);
+      return {
+        success: true,
+        messageId: info.messageId,
+        response: info.response,
+        accepted: info.accepted,
+      };
+    } catch (smtpErr: any) {
+      console.error(`[SMTP LOG ${timestamp}] [ERROR]:`, smtpErr);
+      let userMsg = `Gagal mengirim email via SMTP (${smtpErr.message || 'Connection Error'}).`;
+      if (smtpErr.code === 'EAUTH' || smtpErr.responseCode === 535) {
+        userMsg = 'Autentikasi SMTP Gagal (Username atau Sandi Aplikasi salah). Jika menggunakan Gmail/Google Workspace, pastikan menggunakan "Sandi Aplikasi" (App Password 16-digit).';
+      } else if (smtpErr.code === 'ETIMEDOUT' || smtpErr.code === 'ESOCKET') {
+        userMsg = `Koneksi ke server SMTP (${host}:${port}) terputus/timeout. Periksa kembali Host, Port, dan pengaturan SSL/TLS.`;
+      } else if (smtpErr.code === 'EENVELOPE') {
+        userMsg = `Alamat penerima (${recipient}) atau pengirim (${fromEmail}) ditolak oleh server SMTP.`;
+      }
+      return {
+        success: false,
+        error: userMsg,
+        code: smtpErr.code,
+        response: smtpErr.response,
+      };
+    }
+  }
+
   // Mailketing Email Dispatcher Helper (Using application/x-www-form-urlencoded & reliable direct public attachment URL)
   async function sendMailketingEmailServer(
     recipient: string,
@@ -1251,7 +1427,126 @@ async function startServer() {
     });
   });
 
-  // General Mailketing Proxy Route
+  // Custom SMTP Connection Test Endpoint
+  app.post('/api/mail/test-smtp', async (req, res) => {
+    const { smtpConfig, testRecipient } = req.body || {};
+    if (!smtpConfig || !smtpConfig.host) {
+      return res.status(400).json({ success: false, message: 'Host SMTP wajib diisi.' });
+    }
+
+    const host = (smtpConfig.host || '').trim();
+    const port = Number(smtpConfig.port) || 587;
+    const isSecure = smtpConfig.secure ?? (port === 465);
+    const user = (smtpConfig.username || '').trim();
+    const pass = (smtpConfig.password || '').trim();
+    const fromName = (smtpConfig.fromName || 'PT. LINTAS DATA INTERNASIONAL').trim();
+    const fromEmail = (smtpConfig.fromEmail || user || 'admin@ldi.co.id').trim();
+    const targetRecipient = (testRecipient || fromEmail || 'admin@ldi.co.id').trim();
+
+    try {
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure: isSecure,
+        auth: user && pass ? { user, pass } : undefined,
+        tls: {
+          rejectUnauthorized: false,
+          minVersion: 'TLSv1.2',
+        },
+        connectionTimeout: 12000,
+        greetingTimeout: 8000,
+        socketTimeout: 15000,
+      } as any);
+
+      console.log(`[SMTP TEST] Verifying connection to ${host}:${port} (user: ${user})...`);
+      await transporter.verify();
+      console.log(`[SMTP TEST] Transporter handshake and credentials verified!`);
+
+      // Send test email
+      const testHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #0f172a;">
+          <div style="background: linear-gradient(135deg, #0284c7, #0369a1); color: #ffffff; padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 20px;">
+            <h2 style="margin: 0; font-size: 20px; font-weight: bold;">⚡ Tes Koneksi Custom SMTP Berhasil!</h2>
+            <p style="margin: 6px 0 0 0; font-size: 13px; opacity: 0.9;">PT. LINTAS DATA INTERNASIONAL - e-Office System</p>
+          </div>
+          <div style="padding: 8px 0; font-size: 13px; color: #334155; line-height: 1.6;">
+            <p>Halo Administrator,</p>
+            <p>Selamat! Konfigurasi <strong>Custom SMTP Relay Server</strong> Anda telah berhasil diverifikasi dan terhubung secara langsung tanpa kendala.</p>
+            
+            <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 14px; margin: 16px 0;">
+              <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 4px 0; color: #64748b; width: 35%;">SMTP Host:</td>
+                  <td style="padding: 4px 0; font-weight: bold; font-family: monospace;">${host}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; color: #64748b;">Port & Keamanan:</td>
+                  <td style="padding: 4px 0; font-weight: bold; font-family: monospace;">Port ${port} (${isSecure ? 'SSL / Encrypted' : 'STARTTLS'})</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; color: #64748b;">Pengirim Resmi:</td>
+                  <td style="padding: 4px 0; font-weight: bold;">"${fromName}" &lt;${fromEmail}&gt;</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; color: #64748b;">Waktu Uji:</td>
+                  <td style="padding: 4px 0;">${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB</td>
+                </tr>
+              </table>
+            </div>
+
+            <p style="font-size: 12px; color: #16a34a; font-weight: bold;">
+              ✅ Email notifikasi penerbitan SPH dan Invoice kini dapat dikirim melalui relay ini dengan deliverability tinggi dan reputasi domain yang kuat.
+            </p>
+          </div>
+          <div style="border-top: 1px solid #f1f5f9; padding-top: 16px; text-align: center; font-size: 11px; color: #94a3b8;">
+            &copy; ${new Date().getFullYear()} PT. LINTAS DATA INTERNASIONAL. All rights reserved.
+          </div>
+        </div>
+      `;
+
+      const sendInfo = await transporter.sendMail({
+        from: `"${fromName}" <${fromEmail}>`,
+        to: targetRecipient,
+        subject: `[Uji SMTP Berhasil] Konfigurasi Relay Server PT. LDI (${host})`,
+        html: testHtml,
+        text: `Tes Koneksi SMTP Berhasil! Host: ${host}:${port}, Pengirim: ${fromEmail}`,
+      });
+
+      return res.json({
+        success: true,
+        message: `Koneksi SMTP ke ${host}:${port} berhasil! Email percobaan telah dikirim ke ${targetRecipient}.`,
+        handshakeSuccess: true,
+        authSuccess: true,
+        mailSentSuccess: true,
+        details: {
+          host,
+          port,
+          secure: isSecure,
+          user,
+          targetRecipient,
+          messageId: sendInfo.messageId,
+          response: sendInfo.response,
+        },
+      });
+    } catch (err: any) {
+      console.error('[SMTP TEST ERROR]:', err);
+      let humanMsg = err.message || 'Gagal terhubung ke SMTP';
+      if (err.code === 'EAUTH' || err.responseCode === 535) {
+        humanMsg = 'Autentikasi Gagal: Username atau Password SMTP salah. Untuk Gmail/Google Workspace, gunakan Sandi Aplikasi (App Password 16-digit).';
+      } else if (err.code === 'ETIMEDOUT') {
+        humanMsg = `Koneksi timeout ke ${host}:${port}. Pastikan port dan host tidak diblokir firewall.`;
+      }
+      return res.status(400).json({
+        success: false,
+        message: humanMsg,
+        handshakeSuccess: false,
+        error: err.message,
+        code: err.code,
+      });
+    }
+  });
+
+  // General Unified Email Dispatch Proxy Route (Supports both Custom SMTP and Mailketing API)
   app.post('/api/mail/send', async (req, res) => {
     const {
       recipient,
@@ -1269,11 +1564,15 @@ async function startServer() {
       pdfBase64,
       pdfFilename,
       filename,
+      gatewayMode,
+      smtpConfig,
     } = req.body || {};
 
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
     const hasPdfBase64 = typeof pdfBase64 === 'string' && pdfBase64.length > 0;
-    console.log(`[HTTP POST /api/mail/send] Received request for "${recipient}" | Subject: "${subject}" | Attachments Array: ${hasAttachments ? `${attachments.length} items` : 'No'} | pdfBase64: ${hasPdfBase64 ? `${pdfBase64.length} chars` : 'No'}`);
+    const isSmtp = gatewayMode === 'custom_smtp' || (smtpConfig && smtpConfig.enabled && gatewayMode !== 'mailketing');
+
+    console.log(`[HTTP POST /api/mail/send] Channel: ${isSmtp ? 'Custom SMTP' : 'Mailketing'} | Recipient: "${recipient}" | Subject: "${subject}" | Attachments: ${hasAttachments ? `${attachments.length}` : 'No'} | pdfBase64: ${hasPdfBase64 ? 'Yes' : 'No'}`);
 
     if (!recipient || !subject) {
       return res.status(400).json({ success: false, message: 'Penerima dan Subjek wajib diisi.' });
@@ -1284,6 +1583,33 @@ async function startServer() {
     const finalCc = cc || ccEmail;
     const finalPdfFilename = pdfFilename || filename;
 
+    if (isSmtp && smtpConfig) {
+      // Dispatch using Custom SMTP
+      const smtpResult = await sendSmtpEmailServer(
+        recipient,
+        subject,
+        finalContent,
+        senderName,
+        senderEmail,
+        finalCc,
+        smtpConfig,
+        attachments,
+        pdfBase64,
+        finalPdfFilename,
+        finalAttachUrl
+      );
+
+      return res.json({
+        success: smtpResult.success,
+        message: smtpResult.success
+          ? `Email terkirim ke ${recipient}${finalCc ? ` (CC: ${finalCc})` : ''} via Custom SMTP Relay (${smtpConfig.host || 'Server'}).`
+          : (smtpResult.error || 'Gagal mengirim email via SMTP.'),
+        error: smtpResult.error,
+        data: smtpResult,
+      });
+    }
+
+    // Dispatch using Mailketing API
     const result = await sendMailketingEmailServer(
       recipient,
       subject,

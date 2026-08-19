@@ -1,11 +1,11 @@
 import React, { useState, useRef } from 'react';
-import { Building, Globe, Mail, Phone, MapPin, CreditCard, ShieldCheck, Save, Check, Upload, Image as ImageIcon, Trash2, Link, FileImage, RotateCcw, PenTool, Plus, Edit3, Star, Copy, PlusCircle, X, Send, Key, RefreshCw, FileText, CheckCircle2, AlertCircle, Paperclip, ExternalLink, Zap } from 'lucide-react';
-import { CompanyProfile, Invoice, PKS, SPH } from '../types';
+import { Building, Globe, Mail, Phone, MapPin, CreditCard, ShieldCheck, Save, Check, Upload, Image as ImageIcon, Trash2, Link, FileImage, RotateCcw, PenTool, Plus, Edit3, Star, Copy, PlusCircle, X, Send, Key, RefreshCw, FileText, CheckCircle2, AlertCircle, Paperclip, ExternalLink, Zap, Server, Shield, Lock, Eye, EyeOff, Info, HelpCircle, CheckCircle } from 'lucide-react';
+import { CompanyProfile, Invoice, PKS, SPH, SmtpConfig } from '../types';
 import { COMPANY_PROFILE } from '../data/initialData';
 import { SignaturePad } from './SignaturePad';
 import { D1ConfigPanel } from './D1ConfigPanel';
 import { sendEmail } from '../api/mailService';
-import { apiUploadPdf } from '../api/client';
+import { apiUploadPdf, apiTestSmtpConnection, SmtpTestResult } from '../api/client';
 import { generateStandaloneDocPdfBase64 } from '../utils/pdfGenerator';
 import { formatDateIndonesian, formatIDR } from '../utils/formatters';
 import { buildFullEmailHtml, replaceEmailPlaceholders, DEFAULT_EMAIL_TEMPLATES } from '../utils/emailTemplateHelper';
@@ -39,10 +39,17 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
   const signatureInputRef = useRef<HTMLInputElement>(null);
 
   const [emailTemplateTab, setEmailTemplateTab] = useState<'SPH' | 'PKS' | 'Invoice'>('SPH');
-  const [testRecipientEmail, setTestRecipientEmail] = useState<string>(profile.mailketingSenderEmail || profile.email || 'alwanemail@gmail.com');
+  const [testRecipientEmail, setTestRecipientEmail] = useState<string>(
+    profile.emailGatewayMode === 'custom_smtp' && profile.smtpConfig?.fromEmail
+      ? profile.smtpConfig.fromEmail
+      : (profile.mailketingSenderEmail || profile.email || 'alwanemail@gmail.com')
+  );
   const [testCcEmail, setTestCcEmail] = useState<string>(profile.emailTemplates?.defaultCc || '');
   const [testIncludePdf, setTestIncludePdf] = useState<boolean>(true);
   const [testDocType, setTestDocType] = useState<'SPH' | 'PKS' | 'Invoice'>('SPH');
+  const [showSmtpPassword, setShowSmtpPassword] = useState<boolean>(false);
+  const [smtpTesting, setSmtpTesting] = useState<boolean>(false);
+  const [smtpTestResult, setSmtpTestResult] = useState<SmtpTestResult | null>(null);
   const [testEmailStatus, setTestEmailStatus] = useState<{
     loading: boolean;
     step?: string;
@@ -52,18 +59,140 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
     pdfFilename?: string;
   } | null>(null);
 
-  const handleTestMailketingConnection = async (typeToTest?: 'SPH' | 'PKS' | 'Invoice') => {
-    const selectedType = typeToTest || testDocType || emailTemplateTab || 'SPH';
-    const targetRecipient = (testRecipientEmail || profile.mailketingSenderEmail || profile.email || 'alwanemail@gmail.com').trim();
-    const targetCc = testCcEmail.trim();
-    
-    if (!profile.mailketingApiKey?.trim()) {
-      setTestEmailStatus({
-        loading: false,
+  const applySmtpPreset = (preset: 'gmail' | 'office365' | 'sendgrid' | 'brevo' | 'zoho' | 'mailgun' | 'cpanel' | 'custom') => {
+    const current = profile.smtpConfig || {
+      enabled: true,
+      host: '',
+      port: 587,
+      secure: false,
+      username: '',
+      password: '',
+      fromName: profile.name || 'PT. LINTAS DATA INTERNASIONAL',
+      fromEmail: profile.email || 'admin@ldi.co.id',
+    };
+
+    let newConfig: SmtpConfig = { ...current, providerPreset: preset as any, enabled: true };
+
+    if (preset === 'gmail') {
+      newConfig = {
+        ...newConfig,
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false,
+        fromName: profile.name || 'PT. LINTAS DATA INTERNASIONAL',
+      };
+    } else if (preset === 'office365') {
+      newConfig = {
+        ...newConfig,
+        host: 'smtp.office365.com',
+        port: 587,
+        secure: false,
+      };
+    } else if (preset === 'sendgrid') {
+      newConfig = {
+        ...newConfig,
+        host: 'smtp.sendgrid.net',
+        port: 587,
+        secure: false,
+        username: current.username || 'apikey',
+      };
+    } else if (preset === 'brevo') {
+      newConfig = {
+        ...newConfig,
+        host: 'smtp-relay.brevo.com',
+        port: 587,
+        secure: false,
+      };
+    } else if (preset === 'zoho') {
+      newConfig = {
+        ...newConfig,
+        host: 'smtppro.zoho.com',
+        port: 465,
+        secure: true,
+      };
+    } else if (preset === 'mailgun') {
+      newConfig = {
+        ...newConfig,
+        host: 'smtp.mailgun.org',
+        port: 587,
+        secure: false,
+      };
+    } else if (preset === 'cpanel') {
+      const rawDomain = profile.website ? profile.website.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : 'ldi.co.id';
+      newConfig = {
+        ...newConfig,
+        host: `mail.${rawDomain}`,
+        port: 465,
+        secure: true,
+      };
+    }
+
+    setProfile((prev) => ({
+      ...prev,
+      emailGatewayMode: 'custom_smtp',
+      smtpConfig: newConfig,
+    }));
+  };
+
+  const handleTestSmtpDirect = async () => {
+    if (!profile.smtpConfig || !profile.smtpConfig.host) {
+      setSmtpTestResult({
         success: false,
-        message: '❌ Harap isi API Key Mailketing terlebih dahulu sebelum menguji pengiriman email.'
+        message: 'Host SMTP belum diisi. Harap masukkan alamat host server SMTP Anda (contoh: smtp.gmail.com).',
       });
       return;
+    }
+
+    setSmtpTesting(true);
+    setSmtpTestResult(null);
+
+    const targetRecipient = (testRecipientEmail || profile.smtpConfig.fromEmail || profile.email || 'admin@ldi.co.id').trim();
+
+    try {
+      const res = await apiTestSmtpConnection(profile.smtpConfig, targetRecipient);
+      setSmtpTestResult(res);
+    } catch (err: any) {
+      setSmtpTestResult({
+        success: false,
+        message: `Gagal melakukan pengujian koneksi SMTP: ${err.message || 'Network error'}`,
+        error: err.message,
+      });
+    } finally {
+      setSmtpTesting(false);
+    }
+  };
+
+  const handleTestMailketingConnection = async (typeToTest?: 'SPH' | 'PKS' | 'Invoice') => {
+    const selectedType = typeToTest || testDocType || emailTemplateTab || 'SPH';
+    const isSmtp = profile.emailGatewayMode === 'custom_smtp' || (profile.smtpConfig?.enabled && profile.emailGatewayMode !== 'mailketing');
+    const channelName = isSmtp ? `Custom SMTP Relay (${profile.smtpConfig?.host || 'Server'})` : 'Mailketing API';
+
+    const targetRecipient = (
+      testRecipientEmail ||
+      (isSmtp ? profile.smtpConfig?.fromEmail : profile.mailketingSenderEmail) ||
+      profile.email ||
+      'alwanemail@gmail.com'
+    ).trim();
+    const targetCc = testCcEmail.trim();
+
+    if (isSmtp) {
+      if (!profile.smtpConfig?.host?.trim()) {
+        setTestEmailStatus({
+          loading: false,
+          success: false,
+          message: '❌ Harap lengkapi Host Server SMTP terlebih dahulu sebelum menguji pengiriman email.',
+        });
+        return;
+      }
+    } else {
+      if (!profile.mailketingApiKey?.trim()) {
+        setTestEmailStatus({
+          loading: false,
+          success: false,
+          message: '❌ Harap isi API Key Mailketing terlebih dahulu sebelum menguji pengiriman email.',
+        });
+        return;
+      }
     }
 
     setTestEmailStatus({ 
@@ -246,10 +375,10 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
         }
       }
 
-      // Step 3: Send via Mailketing API
+      // Step 3: Send via Active Email Gateway
       setTestEmailStatus({ 
         loading: true, 
-        step: `3/3 Mengirimkan Email Template ${selectedType} ke ${targetRecipient} via Mailketing API...` 
+        step: `3/3 Mengirimkan Email Template ${selectedType} ke ${targetRecipient} via ${channelName}...` 
       });
 
       const formattedHtmlContent = buildFullEmailHtml({
@@ -263,13 +392,21 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
         fileName: generatedPdfFilename,
       });
 
+      const senderName = isSmtp && profile.smtpConfig?.fromName
+        ? profile.smtpConfig.fromName
+        : (profile.name || 'PT. LINTAS DATA INTERNASIONAL');
+
+      const senderEmail = isSmtp && profile.smtpConfig?.fromEmail
+        ? profile.smtpConfig.fromEmail
+        : (profile.mailketingSenderEmail || profile.email || 'alwanemail@gmail.com');
+
       const res = await sendEmail({
         recipient: targetRecipient,
         cc: targetCc,
         subject: finalSubject,
         content: formattedHtmlContent,
-        senderName: profile.name || 'PT. LINTAS DATA INTERNASIONAL',
-        senderEmail: profile.mailketingSenderEmail || profile.email || 'alwanemail@gmail.com',
+        senderName,
+        senderEmail,
         attachmentUrl: attachedPdfUrl,
         attachments: testPdfBase64
           ? [
@@ -283,13 +420,15 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
         pdfBase64: testPdfBase64,
         pdfFilename: generatedPdfFilename,
         mailketingApiKey: profile.mailketingApiKey,
+        gatewayMode: profile.emailGatewayMode || (isSmtp ? 'custom_smtp' : 'mailketing'),
+        smtpConfig: profile.smtpConfig,
       });
 
       if (res.success) {
         setTestEmailStatus({
           loading: false,
           success: true,
-          message: `✅ Sukses! Email sesuai Template ${selectedType} beserta Lampiran PDF (${generatedPdfFilename}) berhasil dikirim ke ${targetRecipient}${targetCc ? ` dan CC ke ${targetCc}` : ''} via Mailketing Gateway.`,
+          message: `✅ Sukses! Email sesuai Template ${selectedType} beserta Lampiran PDF (${generatedPdfFilename}) berhasil dikirim ke ${targetRecipient}${targetCc ? ` dan CC ke ${targetCc}` : ''} via ${channelName}.`,
           pdfUrl: attachedPdfUrl,
           pdfFilename: generatedPdfFilename,
         });
@@ -297,7 +436,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
         setTestEmailStatus({
           loading: false,
           success: false,
-          message: `❌ ${res.message || 'Gagal terhubung ke Mailketing API.'}`
+          message: `❌ ${res.message || `Gagal terhubung ke ${channelName}.`}`
         });
       }
     } catch (err: any) {
@@ -1443,58 +1582,548 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
             />
           </div>
 
-          {/* MAILKETING API GATEWAY CONFIGURATION */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-              <div className="flex items-center gap-2">
-                <Key className="w-4 h-4 text-blue-700" />
-                <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wide">
-                  Konfigurasi Email Gateway (Mailketing API Key)
-                </h4>
+          {/* EMAIL GATEWAY SELECTION & CONFIGURATION */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-blue-600 text-white rounded-xl shadow-xs">
+                  <Server className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-900 text-sm uppercase tracking-wide flex items-center gap-2">
+                    Konfigurasi Email Gateway & Relay Server
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Pilih jalur pengiriman email penawaran SPH, PKS, dan tagihan invoice resmi kepada pelanggan.
+                  </p>
+                </div>
               </div>
-              <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-semibold">
-                Mailketing API v1
-              </span>
+
+              {/* Gateway Channel Switcher */}
+              <div className="flex bg-slate-200/80 p-1 rounded-xl gap-1 self-start sm:self-auto border border-slate-300/60">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setProfile((prev) => ({
+                      ...prev,
+                      emailGatewayMode: 'custom_smtp',
+                      smtpConfig: {
+                        ...(prev.smtpConfig || {
+                          host: 'smtp.gmail.com',
+                          port: 587,
+                          secure: false,
+                          username: '',
+                          password: '',
+                          fromName: prev.name || 'PT. LINTAS DATA INTERNASIONAL',
+                          fromEmail: prev.email || 'admin@ldi.co.id',
+                        }),
+                        enabled: true,
+                      },
+                    }))
+                  }
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    profile.emailGatewayMode === 'custom_smtp' ||
+                    (profile.smtpConfig?.enabled && profile.emailGatewayMode !== 'mailketing')
+                      ? 'bg-white text-blue-900 shadow-xs border border-slate-200'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Server className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Custom SMTP Server</span>
+                  <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black px-1.5 py-0.2 rounded">
+                    BEBAS SPAM
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setProfile((prev) => ({
+                      ...prev,
+                      emailGatewayMode: 'mailketing',
+                    }))
+                  }
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    profile.emailGatewayMode === 'mailketing' && !profile.smtpConfig?.enabled
+                      ? 'bg-white text-blue-900 shadow-xs border border-slate-200'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Key className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Mailketing API</span>
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="font-bold text-slate-700 text-xs block mb-1">
-                  API Key Mailketing *
-                </label>
-                <input
-                  type="text"
-                  value={profile.mailketingApiKey || ''}
-                  onChange={(e) => setProfile({ ...profile, mailketingApiKey: e.target.value })}
-                  placeholder="5aafffa0c30e5a..."
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
+            {/* IF CUSTOM SMTP MODE ACTIVE */}
+            {(profile.emailGatewayMode === 'custom_smtp' ||
+              (profile.smtpConfig?.enabled && profile.emailGatewayMode !== 'mailketing')) && (
+              <div className="space-y-4 animate-in fade-in duration-150">
+                {/* SMTP Presets Quick Selector */}
+                <div className="bg-white border border-blue-200 rounded-xl p-3.5 space-y-2 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-amber-500" />
+                      Preset Otomatis Provider SMTP:
+                    </span>
+                    <span className="text-[10px] text-slate-500">
+                      Klik salah satu untuk mengisi konfigurasi port & host secara otomatis
+                    </span>
+                  </div>
 
-              <div>
-                <label className="font-bold text-slate-700 text-xs block mb-1">
-                  Email Pengirim Gateway (Sender Email) *
-                </label>
-                <input
-                  type="email"
-                  value={profile.mailketingSenderEmail || ''}
-                  onChange={(e) => setProfile({ ...profile, mailketingSenderEmail: e.target.value })}
-                  placeholder="admin@ldi.co.id"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-            </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => applySmtpPreset('gmail')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition flex items-center gap-1 cursor-pointer ${
+                        profile.smtpConfig?.host === 'smtp.gmail.com'
+                          ? 'bg-red-50 text-red-700 border-red-300 ring-2 ring-red-200'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      <span>🔴 Google / Gmail / GSuite</span>
+                    </button>
 
-            {/* ENHANCED TEST EMAIL CONTROLLER */}
+                    <button
+                      type="button"
+                      onClick={() => applySmtpPreset('office365')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition flex items-center gap-1 cursor-pointer ${
+                        profile.smtpConfig?.host === 'smtp.office365.com'
+                          ? 'bg-blue-50 text-blue-700 border-blue-300 ring-2 ring-blue-200'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      <span>🔵 Microsoft 365 / Outlook</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => applySmtpPreset('sendgrid')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition flex items-center gap-1 cursor-pointer ${
+                        profile.smtpConfig?.host === 'smtp.sendgrid.net'
+                          ? 'bg-indigo-50 text-indigo-700 border-indigo-300 ring-2 ring-indigo-200'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      <span>⚡ SendGrid</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => applySmtpPreset('brevo')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition flex items-center gap-1 cursor-pointer ${
+                        profile.smtpConfig?.host === 'smtp-relay.brevo.com'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300 ring-2 ring-emerald-200'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      <span>🟢 Brevo (Sendinblue)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => applySmtpPreset('zoho')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition flex items-center gap-1 cursor-pointer ${
+                        profile.smtpConfig?.host === 'smtppro.zoho.com'
+                          ? 'bg-amber-50 text-amber-700 border-amber-300 ring-2 ring-amber-200'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      <span>🟡 Zoho Mail</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => applySmtpPreset('mailgun')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition flex items-center gap-1 cursor-pointer ${
+                        profile.smtpConfig?.host === 'smtp.mailgun.org'
+                          ? 'bg-rose-50 text-rose-700 border-rose-300 ring-2 ring-rose-200'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      <span>🔥 Mailgun</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => applySmtpPreset('cpanel')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition flex items-center gap-1 cursor-pointer ${
+                        profile.smtpConfig?.host?.startsWith('mail.')
+                          ? 'bg-purple-50 text-purple-700 border-purple-300 ring-2 ring-purple-200'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      <span>🌐 cPanel / Webmail Hosting</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* SMTP Input Fields */}
+                <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-2xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                    {/* SMTP Host */}
+                    <div className="sm:col-span-6">
+                      <label className="font-bold text-slate-800 text-xs block mb-1">
+                        Host Server SMTP *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={profile.smtpConfig?.host || ''}
+                        onChange={(e) =>
+                          setProfile((prev) => ({
+                            ...prev,
+                            smtpConfig: {
+                              ...(prev.smtpConfig || {
+                                host: '',
+                                port: 587,
+                                secure: false,
+                                username: '',
+                              }),
+                              host: e.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="smtp.gmail.com atau mail.ldi.co.id"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      />
+                    </div>
+
+                    {/* SMTP Port */}
+                    <div className="sm:col-span-3">
+                      <label className="font-bold text-slate-800 text-xs block mb-1">
+                        Port SMTP *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        value={profile.smtpConfig?.port || 587}
+                        onChange={(e) =>
+                          setProfile((prev) => ({
+                            ...prev,
+                            smtpConfig: {
+                              ...(prev.smtpConfig || {
+                                host: 'smtp.gmail.com',
+                                port: 587,
+                                secure: false,
+                                username: '',
+                              }),
+                              port: Number(e.target.value) || 587,
+                            },
+                          }))
+                        }
+                        placeholder="587 / 465 / 25"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      />
+                    </div>
+
+                    {/* Secure SSL / TLS Checkbox */}
+                    <div className="sm:col-span-3 flex items-end pb-2">
+                      <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-slate-800">
+                        <input
+                          type="checkbox"
+                          checked={profile.smtpConfig?.secure ?? (profile.smtpConfig?.port === 465)}
+                          onChange={(e) =>
+                            setProfile((prev) => ({
+                              ...prev,
+                              smtpConfig: {
+                                ...(prev.smtpConfig || {
+                                  host: 'smtp.gmail.com',
+                                  port: 587,
+                                  secure: false,
+                                  username: '',
+                                }),
+                                secure: e.target.checked,
+                              },
+                            }))
+                          }
+                          className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                        />
+                        <span>SSL / TLS Langsung (Port 465)</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Username */}
+                    <div>
+                      <label className="font-bold text-slate-800 text-xs block mb-1">
+                        Username / Email Login SMTP *
+                      </label>
+                      <input
+                        type="text"
+                        value={profile.smtpConfig?.username || ''}
+                        onChange={(e) =>
+                          setProfile((prev) => ({
+                            ...prev,
+                            smtpConfig: {
+                              ...(prev.smtpConfig || {
+                                host: 'smtp.gmail.com',
+                                port: 587,
+                                secure: false,
+                                username: '',
+                              }),
+                              username: e.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="admin@ldi.co.id atau alwanemail@gmail.com"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
+                      />
+                    </div>
+
+                    {/* Password with Eye Toggle */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="font-bold text-slate-800 text-xs">
+                          Password / Sandi Aplikasi (App Password) *
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowSmtpPassword(!showSmtpPassword)}
+                          className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 cursor-pointer"
+                        >
+                          {showSmtpPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                          {showSmtpPassword ? 'Sembunyikan' : 'Tampilkan'}
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type={showSmtpPassword ? 'text' : 'password'}
+                          value={profile.smtpConfig?.password || ''}
+                          onChange={(e) =>
+                            setProfile((prev) => ({
+                              ...prev,
+                              smtpConfig: {
+                                ...(prev.smtpConfig || {
+                                  host: 'smtp.gmail.com',
+                                  port: 587,
+                                  secure: false,
+                                  username: '',
+                                }),
+                                password: e.target.value,
+                              },
+                            }))
+                          }
+                          placeholder="••••••••••••••••"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none pr-9"
+                        />
+                        <div className="absolute right-3 top-2.5 text-slate-400">
+                          <Lock className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        💡 Khusus Gmail/Google Workspace: Gunakan <strong>Sandi Aplikasi (App Password 16-digit)</strong> yang dibuat di pengaturan keamanan Akun Google Anda.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-100">
+                    {/* From Name */}
+                    <div>
+                      <label className="font-bold text-slate-800 text-xs block mb-1">
+                        Nama Tampilan Pengirim Resmi (From Name)
+                      </label>
+                      <input
+                        type="text"
+                        value={profile.smtpConfig?.fromName ?? profile.name ?? 'PT. LINTAS DATA INTERNASIONAL'}
+                        onChange={(e) =>
+                          setProfile((prev) => ({
+                            ...prev,
+                            smtpConfig: {
+                              ...(prev.smtpConfig || {
+                                host: 'smtp.gmail.com',
+                                port: 587,
+                                secure: false,
+                                username: '',
+                              }),
+                              fromName: e.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="PT. LINTAS DATA INTERNASIONAL"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      />
+                    </div>
+
+                    {/* From Email */}
+                    <div>
+                      <label className="font-bold text-slate-800 text-xs block mb-1">
+                        Alamat Email Pengirim Resmi (From Email)
+                      </label>
+                      <input
+                        type="email"
+                        value={profile.smtpConfig?.fromEmail ?? profile.email ?? 'admin@ldi.co.id'}
+                        onChange={(e) =>
+                          setProfile((prev) => ({
+                            ...prev,
+                            smtpConfig: {
+                              ...(prev.smtpConfig || {
+                                host: 'smtp.gmail.com',
+                                port: 587,
+                                secure: false,
+                                username: '',
+                              }),
+                              fromEmail: e.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="admin@ldi.co.id atau billing@ldi.co.id"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Direct SMTP Connection Tester Button & Status Banner */}
+                  <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="text-[11px] text-slate-600 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Koneksi dilindungi TLS 1.2+ dengan enkripsi end-to-end langsung ke server mail.</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleTestSmtpDirect}
+                      disabled={smtpTesting}
+                      className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-4 py-2 rounded-xl text-xs flex items-center justify-center gap-2 shadow-xs transition disabled:opacity-50 cursor-pointer shrink-0"
+                    >
+                      {smtpTesting ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                          <span>Memverifikasi Koneksi SMTP...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Uji Koneksi & Handshake Server SMTP</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* SMTP Test Result Notification */}
+                  {smtpTestResult && (
+                    <div
+                      className={`p-3.5 rounded-xl text-xs space-y-1.5 animate-in fade-in duration-150 ${
+                        smtpTestResult.success
+                          ? 'bg-emerald-50 text-emerald-950 border border-emerald-300'
+                          : 'bg-rose-50 text-rose-950 border border-rose-300'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        {smtpTestResult.success ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        )}
+                        <div className="space-y-1 flex-1">
+                          <p className="font-bold">{smtpTestResult.message}</p>
+                          {smtpTestResult.details && (
+                            <div className="bg-white/80 rounded-lg p-2 font-mono text-[11px] text-slate-700 border border-slate-200/60 space-y-0.5">
+                              <p>• Host: <strong>{smtpTestResult.details.host}:{smtpTestResult.details.port}</strong> (SSL: {String(smtpTestResult.details.secure)})</p>
+                              <p>• User: {smtpTestResult.details.user || '(none)'}</p>
+                              <p>• Handshake & Auth: <strong className="text-emerald-700">OK 250 Accepted</strong></p>
+                              {smtpTestResult.details.messageId && (
+                                <p>• Message ID: {smtpTestResult.details.messageId}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ANTI-SPAM DELIVERABILITY & DOMAIN REPUTATION GUIDE */}
+                <div className="bg-gradient-to-r from-blue-900 to-slate-900 text-white rounded-xl p-4 space-y-3 shadow-sm">
+                  <div className="flex items-center gap-2 text-cyan-300 border-b border-white/10 pb-2">
+                    <Shield className="w-4 h-4" />
+                    <h5 className="font-bold text-xs uppercase tracking-wide">
+                      Panduan Deliverability: Mengapa Email Masuk SPAM & Cara Mengatasinya
+                    </h5>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px] text-slate-200">
+                    <div className="bg-white/10 rounded-lg p-3 space-y-1">
+                      <p className="font-bold text-cyan-300 flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5 text-emerald-400" /> 1. Reputasi IP & Domain Resmi
+                      </p>
+                      <p className="text-slate-300 leading-relaxed">
+                        Layanan shared gateway sering terkena dampak IP spammer lain. Dengan Custom SMTP (Google Workspace / Server Sendiri), reputasi email Anda 100% terjaga.
+                      </p>
+                    </div>
+
+                    <div className="bg-white/10 rounded-lg p-3 space-y-1">
+                      <p className="font-bold text-cyan-300 flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5 text-emerald-400" /> 2. Rekod DNS SPF & DKIM
+                      </p>
+                      <p className="text-slate-300 leading-relaxed">
+                        Pastikan DNS domain Anda memiliki rekod TXT SPF (contoh: <code className="bg-black/40 px-1 py-0.2 rounded font-mono text-[10px]">v=spf1 include:_spf.google.com ~all</code>) dan DKIM aktif.
+                      </p>
+                    </div>
+
+                    <div className="bg-white/10 rounded-lg p-3 space-y-1">
+                      <p className="font-bold text-cyan-300 flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5 text-emerald-400" /> 3. Rekod DMARC Compliance
+                      </p>
+                      <p className="text-slate-300 leading-relaxed">
+                        Tambahkan rekod TXT DMARC pada subdomain <code className="bg-black/40 px-1 py-0.2 rounded font-mono text-[10px]">_dmarc.ldi.co.id</code> agar Gmail/Yahoo mempercayai seluruh email transaksi Anda.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* IF MAILKETING API MODE ACTIVE */}
+            {profile.emailGatewayMode === 'mailketing' && !profile.smtpConfig?.enabled && (
+              <div className="space-y-3 animate-in fade-in duration-150">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 text-xs block mb-1">
+                      API Key Mailketing *
+                    </label>
+                    <input
+                      type="text"
+                      value={profile.mailketingApiKey || ''}
+                      onChange={(e) => setProfile({ ...profile, mailketingApiKey: e.target.value })}
+                      placeholder="e6f901cb964cd1c0fb59453f3450329d"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-700 text-xs block mb-1">
+                      Email Pengirim Gateway (Sender Email) *
+                    </label>
+                    <input
+                      type="email"
+                      value={profile.mailketingSenderEmail || ''}
+                      onChange={(e) => setProfile({ ...profile, mailketingSenderEmail: e.target.value })}
+                      placeholder="admin@ldi.co.id"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 flex items-start gap-2">
+                  <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p>
+                    <strong>Perhatian:</strong> Jalur Mailketing menggunakan server relay bersama. Jika email masuk ke folder SPAM pelanggan, disarankan beralih ke tab <strong>Custom SMTP Server</strong> di atas menggunakan akun Google Workspace / SMTP domain resmi perusahaan Anda.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* ENHANCED UNIVERSAL LIVE TEST EMAIL CONTROLLER */}
             <div className="bg-white border border-blue-200 rounded-xl p-4 space-y-3 shadow-xs">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
                 <div>
                   <h5 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
                     <Send className="w-3.5 h-3.5 text-blue-600" />
-                    Uji Kirim Email Sesuai Template Dokumen & Lampiran PDF
+                    Uji Kirim Email Sesuai Template Dokumen & Lampiran PDF Real
                   </h5>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Uji coba pengiriman nyata ke inbox menggunakan template aktif dan berkas PDF berstempel resmi.
+                    Uji coba pengiriman nyata ke inbox menggunakan template aktif, tanda tangan digital, stempel resmi, dan lampiran PDF berstempel via {profile.emailGatewayMode === 'custom_smtp' || (profile.smtpConfig?.enabled && profile.emailGatewayMode !== 'mailketing') ? 'Custom SMTP Relay' : 'Mailketing API'}.
                   </p>
                 </div>
                 <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-blue-50 text-blue-800 rounded-md border border-blue-200 self-start sm:self-auto">
@@ -1518,13 +2147,13 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
 
                 <div className="sm:col-span-4">
                   <label className="font-bold text-slate-700 text-[11px] block mb-1">
-                    Email Tembusan (CC) <span className="text-slate-400 font-normal text-[10px]">(Opsional, cth: alwanemail@gmail.com)</span>
+                    Email Tembusan (CC) <span className="text-slate-400 font-normal text-[10px]">(Opsional)</span>
                   </label>
                   <input
                     type="text"
                     value={testCcEmail}
                     onChange={(e) => setTestCcEmail(e.target.value)}
-                    placeholder="alwanemail@gmail.com, finance@ldi.co.id"
+                    placeholder="finance@ldi.co.id, direktur@ldi.co.id"
                     className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-slate-50/50"
                   />
                 </div>
@@ -1537,7 +2166,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setTestDocType('SPH')}
-                      className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border transition text-center ${
+                      className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border transition text-center cursor-pointer ${
                         testDocType === 'SPH'
                           ? 'bg-blue-900 text-white border-blue-900 shadow-xs'
                           : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -1548,7 +2177,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setTestDocType('PKS')}
-                      className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border transition text-center ${
+                      className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border transition text-center cursor-pointer ${
                         testDocType === 'PKS'
                           ? 'bg-blue-900 text-white border-blue-900 shadow-xs'
                           : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -1559,7 +2188,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setTestDocType('Invoice')}
-                      className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border transition text-center ${
+                      className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border transition text-center cursor-pointer ${
                         testDocType === 'Invoice'
                           ? 'bg-blue-900 text-white border-blue-900 shadow-xs'
                           : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -1580,7 +2209,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                     className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
                   />
                   <Paperclip className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Sertakan Contoh Lampiran Berkas PDF Resmi (Auto-Generated PDF)</span>
+                  <span>Sertakan Lampiran Berkas PDF Resmi Berstempel & TTD Digital</span>
                 </label>
 
                 <button
@@ -1597,7 +2226,7 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                   ) : (
                     <>
                       <Send className="w-3.5 h-3.5 text-blue-200" />
-                      <span>Kirim Email Uji Coba ({testDocType})</span>
+                      <span>Kirim Email Percobaan ({testDocType})</span>
                     </>
                   )}
                 </button>

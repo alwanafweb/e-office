@@ -1,4 +1,4 @@
-import { Customer, SPH, PKS, Invoice } from '../types';
+import { Customer, SPH, PKS, Invoice, SmtpConfig } from '../types';
 
 /**
  * Returns the configured Cloudflare Worker API URL
@@ -283,5 +283,40 @@ export interface VerifyDocumentResponse {
 export const apiVerifyDocument = async (docQuery: string): Promise<VerifyDocumentResponse> => {
   const clean = encodeURIComponent(docQuery.trim());
   return apiFetch<VerifyDocumentResponse>(`/api/verify?doc=${clean}`);
+};
+
+// ==========================================
+// SMTP TEST CONNECTION API
+// ==========================================
+export interface SmtpTestResult {
+  success: boolean;
+  message: string;
+  handshakeSuccess?: boolean;
+  authSuccess?: boolean;
+  mailSentSuccess?: boolean;
+  details?: {
+    host?: string;
+    port?: number;
+    secure?: boolean;
+    user?: string;
+    targetRecipient?: string;
+    serverBanner?: string;
+    response?: string;
+    messageId?: string;
+  };
+  error?: string;
+}
+
+export const apiTestSmtpConnection = async (
+  smtpConfig: SmtpConfig,
+  testRecipient?: string
+): Promise<SmtpTestResult> => {
+  return apiFetch<SmtpTestResult>('/api/mail/test-smtp', {
+    method: 'POST',
+    body: JSON.stringify({
+      smtpConfig,
+      testRecipient: testRecipient || smtpConfig.fromEmail || 'admin@ldi.co.id',
+    }),
+  });
 };
 

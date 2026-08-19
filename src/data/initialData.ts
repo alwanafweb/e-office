@@ -35,6 +35,8 @@ export const COMPANY_PROFILE: CompanyProfile = {
   mailketingApiKey: 'e6f901cb964cd1c0fb59453f3450329d',
   mailketingSenderEmail: 'alwanemail@gmail.com',
   emailTemplates: {
+    autoSendSph: true,
+    autoSendInvoice: true,
     defaultCc: 'finance@ldi.co.id, sales@ldi.co.id',
     sphSubject: '[PT. LDI] Surat Penawaran Harga (SPH) #{DOC_NUMBER} - {CUSTOMER_NAME}',
     sphBody: `Kepada Yth. Bapak/Ibu Tim Manajemen {CUSTOMER_NAME},

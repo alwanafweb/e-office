@@ -5,6 +5,7 @@ import jsPDF from 'jspdf';
 import { CompanyProfile, Customer, Invoice, PKS, SPH } from '../types';
 import { COMPANY_PROFILE } from '../data/initialData';
 import { PDFTemplate } from '../components/PDFTemplate';
+import { getDecryptedItem } from './crypto';
 
 export const getOfficialDomain = (customWebsite?: string): string => {
   if (!customWebsite) return 'e-office.ldi.co.id';
@@ -125,12 +126,16 @@ export const renderTemplateToPdf = async (
       ? options.className
       : 'bg-white text-slate-900 mx-auto w-[794px] max-w-[794px] min-h-[1123px] p-8 shadow-none border-none rounded-none m-0 relative text-xs leading-relaxed font-sans';
 
+  const activeProfile = companyProfile || getDecryptedItem<CompanyProfile>('ldi_company_profile') || COMPANY_PROFILE;
+  const activeCustomers = customers || getDecryptedItem<Customer[]>('ldi_customers') || [];
+
   // Create temporary container off-screen with exact A4 dimensions
   const container = document.createElement('div');
-  container.style.position = 'fixed';
-  container.style.left = '-9999px';
+  container.style.position = 'absolute';
+  container.style.left = '0';
   container.style.top = '0';
   container.style.width = '794px';
+  container.style.maxWidth = '794px';
   container.style.backgroundColor = '#ffffff';
   container.style.color = '#0f172a';
   container.style.zIndex = '-9999';
@@ -149,8 +154,8 @@ export const renderTemplateToPdf = async (
       id: 'offscreen-printable-document',
       type,
       data,
-      companyProfile: companyProfile || COMPANY_PROFILE,
-      customers,
+      companyProfile: activeProfile,
+      customers: activeCustomers,
       headerMode,
       showStamp,
       showSignatures,
@@ -188,6 +193,9 @@ export const renderTemplateToPdf = async (
       backgroundColor: '#ffffff',
       scrollX: 0,
       scrollY: 0,
+      x: 0,
+      y: 0,
+      width: 794,
       windowWidth: 794,
     });
 

@@ -173,6 +173,8 @@ export interface EmailTemplates {
   invoiceSubject?: string;
   invoiceBody?: string;
   defaultCc?: string;
+  autoSendSph?: boolean;
+  autoSendInvoice?: boolean;
 }
 
 export interface CompanyProfile {

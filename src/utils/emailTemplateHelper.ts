@@ -1,5 +1,8 @@
 import { CompanyProfile, Customer, Invoice, PKS, SPH } from '../types';
 import { formatIDR, formatDateIndonesian } from './formatters';
+import { sendEmail } from '../api/mailService';
+import { apiUploadPdf } from '../api/client';
+import { generateStandaloneDocPdfBase64 } from './pdfGenerator';
 
 export interface EmailPlaceholderData {
   docNumber: string;
@@ -592,4 +595,174 @@ export function buildFullEmailHtml(params: {
 </body>
 </html>
   `.trim();
+}
+
+export interface AutoEmailDispatchResult {
+  triggered: boolean;
+  success: boolean;
+  message: string;
+  recipient?: string;
+  pdfUrl?: string;
+  docNumber?: string;
+}
+
+/**
+ * Triggers automatic email notification to customer with high-fidelity PDF attachment
+ * using the configured templates from companyProfile and Mailketing API.
+ */
+export async function triggerAutoDocumentEmail(params: {
+  type: 'SPH' | 'Invoice' | 'PKS';
+  docData: SPH | Invoice | PKS;
+  companyProfile?: CompanyProfile;
+  customers?: Customer[];
+  overrideRecipient?: string;
+  overrideCc?: string;
+  forceSend?: boolean;
+}): Promise<AutoEmailDispatchResult> {
+  const { type, docData, companyProfile, customers, overrideRecipient, overrideCc, forceSend = false } = params;
+
+  // 1. Check if auto-send is enabled in companyProfile or explicitly forced
+  const isEnabled =
+    forceSend ||
+    (type === 'SPH'
+      ? companyProfile?.emailTemplates?.autoSendSph !== false
+      : type === 'Invoice'
+      ? companyProfile?.emailTemplates?.autoSendInvoice !== false
+      : true);
+
+  if (!isEnabled) {
+    return {
+      triggered: false,
+      success: false,
+      message: `Pengiriman otomatis untuk dokumen ${type} dinonaktifkan pada Pengaturan Perusahaan.`,
+    };
+  }
+
+  // 2. Resolve recipient email
+  let recipient = (overrideRecipient || (docData as any).customerEmail || '').trim();
+  if (!recipient || !recipient.includes('@')) {
+    const cust = customers?.find((c) => c.id === docData.customerId || c.companyName === docData.customerName);
+    if (cust?.email && cust.email.includes('@')) {
+      recipient = cust.email.trim();
+    }
+  }
+
+  if (!recipient || !recipient.includes('@')) {
+    return {
+      triggered: true,
+      success: false,
+      message: `Email tidak dapat dikirim otomatis karena alamat email pelanggan untuk "${docData.customerName}" tidak ditemukan.`,
+    };
+  }
+
+  // 3. Resolve document number
+  const docNumber =
+    type === 'SPH'
+      ? (docData as SPH).sphNumber
+      : type === 'Invoice'
+      ? (docData as Invoice).invoiceNumber
+      : (docData as PKS).pksNumber;
+
+  const fileName = `${type}_${docNumber.replace(/[\/\\]/g, '_')}.pdf`;
+
+  // 4. Resolve template text from companyProfile or DEFAULT_EMAIL_TEMPLATES
+  let subjectTemplate = '';
+  let bodyTemplate = '';
+
+  if (type === 'SPH') {
+    subjectTemplate = companyProfile?.emailTemplates?.sphSubject?.trim() || DEFAULT_EMAIL_TEMPLATES.sphSubject;
+    bodyTemplate = companyProfile?.emailTemplates?.sphBody?.trim() || DEFAULT_EMAIL_TEMPLATES.sphBody;
+  } else if (type === 'Invoice') {
+    subjectTemplate = companyProfile?.emailTemplates?.invoiceSubject?.trim() || DEFAULT_EMAIL_TEMPLATES.invoiceSubject;
+    bodyTemplate = companyProfile?.emailTemplates?.invoiceBody?.trim() || DEFAULT_EMAIL_TEMPLATES.invoiceBody;
+  } else {
+    subjectTemplate = companyProfile?.emailTemplates?.pksSubject?.trim() || DEFAULT_EMAIL_TEMPLATES.pksSubject;
+    bodyTemplate = companyProfile?.emailTemplates?.pksBody?.trim() || DEFAULT_EMAIL_TEMPLATES.pksBody;
+  }
+
+  const subject = replaceEmailPlaceholders(subjectTemplate, type, docData, companyProfile, customers);
+  const messageBody = replaceEmailPlaceholders(bodyTemplate, type, docData, companyProfile, customers);
+
+  // 5. Generate high-fidelity standalone PDF buffer
+  let pdfResult: any = null;
+  let attachedPdfUrl: string | undefined = undefined;
+
+  try {
+    pdfResult = await generateStandaloneDocPdfBase64(type, docData, companyProfile, customers, {
+      headerMode: 'official',
+      showStamp: true,
+      showSignatures: true,
+    });
+  } catch (pdfErr) {
+    console.warn(`[AUTO EMAIL] Could not generate standalone PDF for ${docNumber}:`, pdfErr);
+  }
+
+  // 6. Upload PDF to server/CDN for direct download link
+  if (pdfResult?.base64) {
+    try {
+      const customPublicDomain =
+        typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost')
+          ? window.location.origin
+          : (companyProfile?.website ? (companyProfile.website.startsWith('http') ? companyProfile.website : `https://${companyProfile.website}`) : undefined);
+
+      const uploadRes = await apiUploadPdf(pdfResult.filename || fileName, pdfResult.base64, customPublicDomain);
+      if (uploadRes?.pdfUrl) {
+        attachedPdfUrl = uploadRes.pdfUrl;
+      }
+    } catch (upErr) {
+      console.warn('[AUTO EMAIL] PDF upload warning:', upErr);
+    }
+  }
+
+  // 7. Format complete HTML
+  const fullHtml = buildFullEmailHtml({
+    type,
+    docNumber,
+    customerName: docData.customerName,
+    messageBody,
+    data: docData,
+    companyProfile,
+    attachedPdfUrl,
+    fileName,
+  });
+
+  // 8. Resolve sender identity & CC
+  const senderName = companyProfile?.name || 'PT. LINTAS DATA INTERNASIONAL';
+  const senderEmail = companyProfile?.mailketingSenderEmail || companyProfile?.email || 'alwanemail@gmail.com';
+  const ccAddresses = overrideCc !== undefined ? overrideCc : companyProfile?.emailTemplates?.defaultCc;
+
+  // 9. Dispatch via Mailketing API
+  try {
+    const sendRes = await sendEmail({
+      recipient,
+      cc: ccAddresses,
+      subject,
+      content: fullHtml,
+      senderName,
+      senderEmail,
+      pdfBase64: pdfResult?.base64,
+      pdfFilename: fileName,
+      attachmentUrl: attachedPdfUrl,
+      mailketingApiKey: companyProfile?.mailketingApiKey,
+    });
+
+    return {
+      triggered: true,
+      success: sendRes.success,
+      message: sendRes.success
+        ? `Notifikasi email & lampiran PDF ${type} #${docNumber} berhasil dikirim secara otomatis ke ${recipient} via Mailketing API.`
+        : `Gagal mengirim email otomatis via Mailketing: ${sendRes.message}`,
+      recipient,
+      pdfUrl: attachedPdfUrl,
+      docNumber,
+    };
+  } catch (sendErr: any) {
+    return {
+      triggered: true,
+      success: false,
+      message: `Error pengiriman email Mailketing: ${sendErr?.message || sendErr}`,
+      recipient,
+      docNumber,
+    };
+  }
 }

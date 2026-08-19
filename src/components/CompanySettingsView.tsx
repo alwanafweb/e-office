@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Building, Globe, Mail, Phone, MapPin, CreditCard, ShieldCheck, Save, Check, Upload, Image as ImageIcon, Trash2, Link, FileImage, RotateCcw, PenTool, Plus, Edit3, Star, Copy, PlusCircle, X, Send, Key, RefreshCw, FileText, CheckCircle2, AlertCircle, Paperclip, ExternalLink } from 'lucide-react';
+import { Building, Globe, Mail, Phone, MapPin, CreditCard, ShieldCheck, Save, Check, Upload, Image as ImageIcon, Trash2, Link, FileImage, RotateCcw, PenTool, Plus, Edit3, Star, Copy, PlusCircle, X, Send, Key, RefreshCw, FileText, CheckCircle2, AlertCircle, Paperclip, ExternalLink, Zap } from 'lucide-react';
 import { CompanyProfile, Invoice, PKS, SPH } from '../types';
 import { COMPANY_PROFILE } from '../data/initialData';
 import { SignaturePad } from './SignaturePad';
@@ -1359,6 +1359,73 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
               <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900" title="Tautan Verifikasi Keaslian Dokumen">{`{VERIFY_URL}`}</span>
               <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900" title="Nomor Telepon / WhatsApp">{`{PHONE}`}</span>
               <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold text-blue-900" title="Domain / Website PT LDI">{`{WEBSITE}`}</span>
+            </div>
+          </div>
+
+          {/* Auto Notification Automation Toggles */}
+          <div className="bg-gradient-to-r from-blue-50 to-sky-50 border border-blue-200 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between border-b border-blue-200 pb-2">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-blue-600" />
+                <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wide">
+                  Otomatisasi Pengiriman Notifikasi Email & Lampiran PDF (Mailketing API)
+                </h4>
+              </div>
+              <span className="text-[10px] bg-blue-600 text-white font-bold px-2.5 py-0.5 rounded-full shadow-xs">
+                AUTO-TRIGGER
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <label className="flex items-start gap-3 p-3 bg-white rounded-xl border border-blue-200/80 shadow-xs cursor-pointer hover:border-blue-400 transition">
+                <input
+                  type="checkbox"
+                  checked={profile.emailTemplates?.autoSendSph !== false}
+                  onChange={(e) =>
+                    setProfile((prev) => ({
+                      ...prev,
+                      emailTemplates: {
+                        ...prev.emailTemplates,
+                        autoSendSph: e.target.checked,
+                      },
+                    }))
+                  }
+                  className="mt-1 w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                />
+                <div>
+                  <p className="font-bold text-slate-900 text-xs">
+                    Kirim Email Otomatis Saat Pembuatan SPH Baru
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                    Otomatis merender PDF resmi SPH bertanda tangan dan mengirimkannya ke email pelanggan via Mailketing API saat SPH diterbitkan.
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-3 bg-white rounded-xl border border-blue-200/80 shadow-xs cursor-pointer hover:border-blue-400 transition">
+                <input
+                  type="checkbox"
+                  checked={profile.emailTemplates?.autoSendInvoice !== false}
+                  onChange={(e) =>
+                    setProfile((prev) => ({
+                      ...prev,
+                      emailTemplates: {
+                        ...prev.emailTemplates,
+                        autoSendInvoice: e.target.checked,
+                      },
+                    }))
+                  }
+                  className="mt-1 w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                />
+                <div>
+                  <p className="font-bold text-slate-900 text-xs">
+                    Kirim Email Otomatis Saat Pembuatan Invoice Baru
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                    Otomatis merender PDF resmi Faktur Invoice & rekening penampung dan mengirimkannya ke email pelanggan saat Invoice diterbitkan / dikonversi.
+                  </p>
+                </div>
+              </label>
             </div>
           </div>
 

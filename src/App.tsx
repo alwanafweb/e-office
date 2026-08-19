@@ -50,6 +50,7 @@ import {
   removeEncryptedItem,
 } from './utils/crypto';
 import { syncLocalWithCloudflareD1 } from './utils/syncManager';
+import { triggerAutoDocumentEmail } from './utils/emailTemplateHelper';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('verifyDoc'); // Public default view
@@ -413,6 +414,10 @@ export default function App() {
     setEncryptedItem('ldi_invoices', invoices);
   }, [invoices]);
 
+  useEffect(() => {
+    setEncryptedItem('ldi_company_profile', companyProfile);
+  }, [companyProfile]);
+
   // Recurring Background Auto-Sync Process (Checks D1 logs & auto-merges every 60s)
   useEffect(() => {
     let isMounted = true;
@@ -500,10 +505,30 @@ export default function App() {
   };
 
   // SPH Handlers
-  const handleAddSph = (sph: SPH) => {
+  const handleAddSph = (sph: SPH, options?: { sendEmail?: boolean }) => {
     setSphList([sph, ...sphList]);
     addActivityLog('Dibuat', 'SPH', sph.sphNumber, `Menerbitkan Penawaran Harga (SPH) untuk ${sph.customerName}`);
     apiCreateSPH(sph).catch((e) => console.error('D1 Create SPH Error:', e));
+
+    // Automatic email notification dispatch via Mailketing API
+    const shouldSend = options?.sendEmail !== undefined ? options.sendEmail : companyProfile.emailTemplates?.autoSendSph !== false;
+    if (shouldSend) {
+      triggerAutoDocumentEmail({
+        type: 'SPH',
+        docData: sph,
+        companyProfile,
+        customers,
+        forceSend: options?.sendEmail === true,
+      })
+        .then((res) => {
+          if (res.triggered && res.success) {
+            addActivityLog('Dikirim', 'SPH', sph.sphNumber, `Email notifikasi & lampiran PDF SPH otomatis terkirim ke ${res.recipient}`);
+          } else if (res.triggered && !res.success) {
+            console.warn('[AUTO EMAIL SPH INFO]', res.message);
+          }
+        })
+        .catch((err) => console.error('Error auto-dispatching SPH email:', err));
+    }
   };
 
   const handleUpdateSph = (sph: SPH) => {
@@ -672,6 +697,24 @@ export default function App() {
     apiCreateInvoice(newInvoice).catch((e) => console.error('D1 Create Invoice Error:', e));
     apiUpdateSPH(sph.id, updatedSph).catch((e) => console.error('D1 Update SPH Error:', e));
 
+    // Automatic email notification dispatch via Mailketing API for converted invoice
+    if (companyProfile.emailTemplates?.autoSendInvoice !== false) {
+      triggerAutoDocumentEmail({
+        type: 'Invoice',
+        docData: newInvoice,
+        companyProfile,
+        customers,
+      })
+        .then((res) => {
+          if (res.triggered && res.success) {
+            addActivityLog('Dikirim', 'Invoice', newInvoice.invoiceNumber, `Email notifikasi & lampiran PDF Invoice otomatis terkirim ke ${res.recipient}`);
+          } else if (res.triggered && !res.success) {
+            console.warn('[AUTO EMAIL INVOICE INFO]', res.message);
+          }
+        })
+        .catch((err) => console.error('Error auto-dispatching converted Invoice email:', err));
+    }
+
     // Redirect to Invoice view
     setActiveTab('invoices');
     alert(`Berhasil! SPH ${sph.sphNumber} telah dikonversi menjadi Invoice Tagihan No. ${newInvoiceNumber}`);
@@ -706,10 +749,30 @@ export default function App() {
   };
 
   // Invoice Handlers
-  const handleAddInvoice = (inv: Invoice) => {
+  const handleAddInvoice = (inv: Invoice, options?: { sendEmail?: boolean }) => {
     setInvoices([inv, ...invoices]);
     addActivityLog('Dibuat', 'Invoice', inv.invoiceNumber, `Menerbitkan Invoice Tagihan untuk ${inv.customerName}`);
     apiCreateInvoice(inv).catch((e) => console.error('D1 Create Invoice Error:', e));
+
+    // Automatic email notification dispatch via Mailketing API
+    const shouldSend = options?.sendEmail !== undefined ? options.sendEmail : companyProfile.emailTemplates?.autoSendInvoice !== false;
+    if (shouldSend) {
+      triggerAutoDocumentEmail({
+        type: 'Invoice',
+        docData: inv,
+        companyProfile,
+        customers,
+        forceSend: options?.sendEmail === true,
+      })
+        .then((res) => {
+          if (res.triggered && res.success) {
+            addActivityLog('Dikirim', 'Invoice', inv.invoiceNumber, `Email notifikasi & lampiran PDF Invoice otomatis terkirim ke ${res.recipient}`);
+          } else if (res.triggered && !res.success) {
+            console.warn('[AUTO EMAIL INVOICE INFO]', res.message);
+          }
+        })
+        .catch((err) => console.error('Error auto-dispatching Invoice email:', err));
+    }
   };
 
   const handleUpdateInvoice = (inv: Invoice) => {
@@ -1083,6 +1146,7 @@ export default function App() {
           <SphView
             sphList={sphList}
             customers={customers}
+            companyProfile={companyProfile}
             onAddSph={handleAddSph}
             onUpdateSph={handleUpdateSph}
             onDeleteSph={handleDeleteSph}

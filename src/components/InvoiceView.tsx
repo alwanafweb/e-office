@@ -30,6 +30,7 @@ import {
   BellRing,
   Send,
   Edit2,
+  Mail,
 } from 'lucide-react';
 import { CompanyProfile, Customer, Invoice, ItemService, PaymentRecord, PKS, ServiceCategory, SPH } from '../types';
 import { getDecryptedItem, setEncryptedItem, removeEncryptedItem } from '../utils/crypto';
@@ -58,7 +59,7 @@ interface InvoiceViewProps {
   sphList: SPH[];
   pksList: PKS[];
   companyProfile?: CompanyProfile;
-  onAddInvoice: (invoice: Invoice) => void;
+  onAddInvoice: (invoice: Invoice, options?: { sendEmail?: boolean }) => void;
   onUpdateInvoice: (invoice: Invoice) => void;
   onDeleteInvoice: (id: string) => void;
   onBatchDeleteInvoice?: (ids: string[]) => void;
@@ -132,6 +133,9 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
   const [useTax, setUseTax] = useState<boolean>(true);
   const [billingType, setBillingType] = useState<'one_time' | 'monthly'>('one_time');
   const [autoSendMonthly, setAutoSendMonthly] = useState<boolean>(true);
+  const [autoSendEmail, setAutoSendEmail] = useState<boolean>(
+    companyProfile?.emailTemplates?.autoSendInvoice !== false
+  );
 
   // Billing Type Filter & Cron Modal States
   const [billingTypeFilter, setBillingTypeFilter] = useState<'Semua' | 'one_time' | 'monthly'>('Semua');
@@ -167,6 +171,7 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
     setUseTax(true);
     setBillingType('one_time');
     setAutoSendMonthly(true);
+    setAutoSendEmail(companyProfile?.emailTemplates?.autoSendInvoice !== false);
     setItems(defaultInvoiceItems);
     setSelectedBankKey(String(defaultBankIndex));
     setCustomNotes('');
@@ -511,7 +516,7 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
         signedByFinance: companyProfile?.financeManager || COMPANY_PROFILE.financeManager,
       };
 
-      onAddInvoice(newInvoice);
+      onAddInvoice(newInvoice, { sendEmail: autoSendEmail });
       removeEncryptedItem('ldi_draft_invoice');
       setHasDraftAvailable(false);
       setLastAutoSaveTime(null);
@@ -1517,6 +1522,34 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
                     </div>
                   </div>
                 ))}
+              </div>
+
+              {/* Automatic Email Notification Toggle */}
+              <div className="bg-emerald-50 dark:bg-emerald-950/40 p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg shrink-0">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                      Kirim Notifikasi & Berkas PDF Otomatis via Mailketing
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Otomatis kirim tagihan Invoice berstempel resmi ke email pelanggan saat Invoice diterbitkan.
+                    </p>
+                  </div>
+                </div>
+                <label className="inline-flex items-center gap-2 cursor-pointer bg-white dark:bg-slate-900 px-3.5 py-2 rounded-lg border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-50 dark:hover:bg-slate-800 transition shrink-0 select-none">
+                  <input
+                    type="checkbox"
+                    checked={autoSendEmail}
+                    onChange={(e) => setAutoSendEmail(e.target.checked)}
+                    className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <span className="font-bold text-xs text-emerald-950 dark:text-emerald-200">
+                    {autoSendEmail ? 'Kirim Otomatis' : 'Jangan Kirim'}
+                  </span>
+                </label>
               </div>
 
               {/* Tax PPN 11% Toggle */}

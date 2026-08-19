@@ -20,8 +20,9 @@ import {
   Save,
   RotateCcw,
   Edit2,
+  Mail,
 } from 'lucide-react';
-import { Customer, ItemService, PKS, ServiceCategory, SPH, TechnicalSpec } from '../types';
+import { CompanyProfile, Customer, ItemService, PKS, ServiceCategory, SPH, TechnicalSpec } from '../types';
 import { getDecryptedItem, setEncryptedItem, removeEncryptedItem } from '../utils/crypto';
 import { formatDateIndonesian, formatIDR, generateDocNumber } from '../utils/formatters';
 import { COMPANY_PROFILE } from '../data/initialData';
@@ -29,7 +30,8 @@ import { COMPANY_PROFILE } from '../data/initialData';
 interface SphViewProps {
   sphList: SPH[];
   customers: Customer[];
-  onAddSph: (sph: SPH) => void;
+  companyProfile?: CompanyProfile;
+  onAddSph: (sph: SPH, options?: { sendEmail?: boolean }) => void;
   onUpdateSph: (sph: SPH) => void;
   onDeleteSph: (id: string) => void;
   onBatchDeleteSph?: (ids: string[]) => void;
@@ -44,6 +46,7 @@ interface SphViewProps {
 export const SphView: React.FC<SphViewProps> = ({
   sphList,
   customers,
+  companyProfile,
   onAddSph,
   onUpdateSph,
   onDeleteSph,
@@ -71,6 +74,9 @@ export const SphView: React.FC<SphViewProps> = ({
 
   const [validityDays, setValidityDays] = useState<number>(14);
   const [useTax, setUseTax] = useState<boolean>(true);
+  const [autoSendEmail, setAutoSendEmail] = useState<boolean>(
+    companyProfile?.emailTemplates?.autoSendSph !== false
+  );
 
   const defaultItems: ItemService[] = [
     {
@@ -316,7 +322,7 @@ export const SphView: React.FC<SphViewProps> = ({
         signedDate: new Date().toISOString().split('T')[0],
       };
 
-      onAddSph(newSph);
+      onAddSph(newSph, { sendEmail: autoSendEmail });
       removeEncryptedItem('ldi_draft_sph');
       setHasDraftAvailable(false);
       setLastAutoSaveTime(null);
@@ -874,6 +880,34 @@ export const SphView: React.FC<SphViewProps> = ({
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* Automatic Email Notification Toggle */}
+              <div className="bg-sky-50 dark:bg-sky-950/40 p-3.5 rounded-xl border border-sky-200 dark:border-sky-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-sky-500/10 text-sky-600 dark:text-sky-400 rounded-lg shrink-0">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                      Kirim Notifikasi & Berkas PDF Otomatis via Mailketing
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Otomatis kirim email berstempel resmi ke email pelanggan saat SPH diterbitkan.
+                    </p>
+                  </div>
+                </div>
+                <label className="inline-flex items-center gap-2 cursor-pointer bg-white dark:bg-slate-900 px-3.5 py-2 rounded-lg border border-sky-300 dark:border-sky-700 hover:bg-sky-50 dark:hover:bg-slate-800 transition shrink-0 select-none">
+                  <input
+                    type="checkbox"
+                    checked={autoSendEmail}
+                    onChange={(e) => setAutoSendEmail(e.target.checked)}
+                    className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer"
+                  />
+                  <span className="font-bold text-xs text-sky-950 dark:text-sky-200">
+                    {autoSendEmail ? 'Kirim Otomatis' : 'Jangan Kirim'}
+                  </span>
+                </label>
               </div>
 
               {/* Tax PPN 11% Toggle */}

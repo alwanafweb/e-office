@@ -23,6 +23,8 @@ export const KopSuratHeader: React.FC<KopSuratHeaderProps> = ({ compact = false,
                 src={profile.logoUrl}
                 alt={profile.legalName || 'Logo Perusahaan'}
                 className="w-full h-full object-contain"
+                crossOrigin="anonymous"
+                referrerPolicy="no-referrer"
               />
             </div>
           ) : (

@@ -797,6 +797,7 @@ export const CustomPksModal: React.FC<CustomPksModalProps> = ({
                         <option value="Cloud Server">Cloud Server</option>
                         <option value="Colocation Server">Colocation Server</option>
                         <option value="Datacenter Managed">Datacenter Managed</option>
+                        <option value="Custom Layanan">Custom Layanan</option>
                       </select>
                     </div>
 

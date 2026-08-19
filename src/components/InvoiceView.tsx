@@ -400,6 +400,7 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
       else if (value === 'Colocation Server') defaultDesc = 'Layanan Colocation Server Rack Unit Datacenter Tier-3';
       else if (value === 'Datacenter Managed') defaultDesc = 'Layanan Managed Services & Technical Support Datacenter 24/7';
       else if (value === 'Internet Dedicated') defaultDesc = 'Akses Internet Dedicated Symmetrical Speed High Performance SLA 99.9%';
+      else if (value === 'Custom Layanan') defaultDesc = 'Layanan Kustom / Solusi Khusus IT & Infrastruktur PT. LDI';
 
       updated[index] = { ...updated[index], category: value, description: defaultDesc };
     } else {
@@ -1442,6 +1443,7 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
                           <option value="Cloud Server">Cloud Server</option>
                           <option value="Colocation Server">Colocation Server</option>
                           <option value="Datacenter Managed">Datacenter Managed</option>
+                          <option value="Custom Layanan">Custom Layanan</option>
                         </select>
                       </div>
 

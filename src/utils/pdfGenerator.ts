@@ -123,18 +123,17 @@ export const renderTemplateToPdf = async (
   const customClassName =
     typeof options === 'object' && options?.className
       ? options.className
-      : '!shadow-none !border-none !rounded-none !p-8 !m-0 !w-[794px] !max-w-[794px]';
+      : 'bg-white text-slate-900 mx-auto w-[794px] max-w-[794px] min-h-[1123px] p-8 shadow-none border-none rounded-none m-0 relative text-xs leading-relaxed font-sans';
 
   // Create temporary container off-screen with exact A4 dimensions
   const container = document.createElement('div');
-  container.style.position = 'absolute';
-  container.style.left = '0';
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
   container.style.top = '0';
   container.style.width = '794px';
-  container.style.minHeight = '1123px';
   container.style.backgroundColor = '#ffffff';
   container.style.color = '#0f172a';
-  container.style.zIndex = '-99999';
+  container.style.zIndex = '-9999';
   container.style.opacity = '1';
   container.style.pointerEvents = 'none';
   container.style.boxSizing = 'border-box';
@@ -147,6 +146,7 @@ export const renderTemplateToPdf = async (
 
   root.render(
     React.createElement(PDFTemplate, {
+      id: 'offscreen-printable-document',
       type,
       data,
       companyProfile: companyProfile || COMPANY_PROFILE,
@@ -159,7 +159,7 @@ export const renderTemplateToPdf = async (
   );
 
   // Wait for React to render DOM, fonts, and initialize QR Codes
-  await new Promise((resolve) => setTimeout(resolve, 450));
+  await new Promise((resolve) => setTimeout(resolve, 500));
 
   // Wait for all images inside container to finish loading
   const images = container.querySelectorAll('img');
@@ -188,7 +188,7 @@ export const renderTemplateToPdf = async (
       backgroundColor: '#ffffff',
       scrollX: 0,
       scrollY: 0,
-      windowWidth: 1200,
+      windowWidth: 794,
     });
 
     const imgData = canvas.toDataURL('image/jpeg', 0.98);

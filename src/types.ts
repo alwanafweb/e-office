@@ -1,6 +1,6 @@
 export type DocumentStatus = 'Draft' | 'Dikirim' | 'Disetujui' | 'Ditolak' | 'Aktif' | 'Selesai' | 'Terbayar' | 'Belum Bayar' | 'Jatuh Tempo' | 'Dibatalkan';
 
-export type ServiceCategory = 'Internet Dedicated' | 'Cloud Server' | 'Colocation Server' | 'Datacenter Managed';
+export type ServiceCategory = 'Internet Dedicated' | 'Cloud Server' | 'Colocation Server' | 'Datacenter Managed' | 'Custom Layanan';
 
 export interface ItemService {
   id: string;

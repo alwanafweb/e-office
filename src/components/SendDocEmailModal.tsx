@@ -133,29 +133,30 @@ export const SendDocEmailModal: React.FC<SendDocEmailModalProps> = ({
     setIsSending(true);
 
     try {
-      // Step 1: Render 100% exact high-fidelity PDF Buffer with identical PDFTemplate configuration as web preview
+      // Step 1: Render 100% exact high-fidelity PDF Buffer matching the on-screen preview and download
       setSendStep('1/3 Merender Dokumen PDF Resmi & Tanda Tangan Digital...');
       
       const fileName = `${type}_${docNumber.replace(/[\/\\]/g, '_')}.pdf`;
       let attachedPdfUrl: string | undefined = undefined;
 
-      // Use the high-fidelity unified PDFTemplate generator with identical configuration (headerMode, showStamp, showSignatures)
-      let pdfResult = await generateStandaloneDocPdfBase64(
-        type,
-        data,
-        companyProfile,
-        customers,
-        {
-          headerMode,
-          showStamp,
-          showSignatures,
-        }
-      );
+      // 1. Primary: If the document is currently mounted on screen in the preview modal,
+      // capture the EXACT SAME DOM element that the "Download PDF" button uses.
+      let pdfResult = await generatePdfBase64('printable-document-content', fileName);
 
-      // Graceful fallback to on-screen DOM element capture if offscreen rendering needed
+      // 2. Fallback: If not found in DOM, use high-fidelity standalone renderer
       if (!pdfResult || !pdfResult.base64) {
-        console.info('Fallback to on-screen element capture for document attachment...');
-        pdfResult = await generatePdfBase64('printable-document-content', fileName);
+        console.info('Capturing via standalone renderer for PDF attachment...');
+        pdfResult = await generateStandaloneDocPdfBase64(
+          type,
+          data,
+          companyProfile,
+          customers,
+          {
+            headerMode,
+            showStamp,
+            showSignatures,
+          }
+        );
       }
 
       if (pdfResult && pdfResult.base64) {

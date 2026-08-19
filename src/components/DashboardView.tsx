@@ -223,6 +223,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     'Cloud Server': 0,
     'Colocation Server': 0,
     'Datacenter Managed': 0,
+    'Custom Layanan': 0,
   };
 
   filteredInvoices.forEach((inv) => {
@@ -886,11 +887,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               const val = categoryBreakdown[cat];
               const pct = totalInvoicedMonth > 0 ? Math.round((val / totalInvoicedMonth) * 100) : 0;
 
+              const categoryColors: Record<ServiceCategory, { dot: string; bar: string }> = {
+                'Internet Dedicated': { dot: 'bg-blue-600', bar: 'from-blue-900 via-blue-600 to-cyan-500' },
+                'Cloud Server': { dot: 'bg-indigo-600', bar: 'from-indigo-900 via-indigo-600 to-sky-400' },
+                'Colocation Server': { dot: 'bg-purple-600', bar: 'from-purple-900 via-purple-600 to-pink-500' },
+                'Datacenter Managed': { dot: 'bg-emerald-600', bar: 'from-emerald-900 via-emerald-600 to-teal-400' },
+                'Custom Layanan': { dot: 'bg-amber-500', bar: 'from-amber-700 via-amber-500 to-orange-400' },
+              };
+              const color = categoryColors[cat] || { dot: 'bg-blue-600', bar: 'from-blue-900 via-indigo-600 to-cyan-500' };
+
               return (
                 <div key={cat} className="space-y-1">
                   <div className="flex justify-between text-xs font-bold text-slate-800">
                     <span className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                      <span className={`w-2.5 h-2.5 rounded-full ${color.dot}`}></span>
                       {cat}
                     </span>
                     <span className="font-mono text-slate-900">
@@ -899,7 +909,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                   <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-blue-900 via-indigo-600 to-cyan-500 rounded-full transition-all duration-500"
+                      className={`h-full bg-gradient-to-r ${color.bar} rounded-full transition-all duration-500`}
                       style={{ width: `${pct}%` }}
                     ></div>
                   </div>

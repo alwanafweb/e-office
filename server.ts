@@ -12,23 +12,92 @@ async function startServer() {
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // Persistent database store for local server API
-  const DATA_DIR = path.join(process.cwd(), 'data');
+  const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
   const DB_FILE = path.join(DATA_DIR, 'db.json');
+  const DB_BACKUP_FILE = path.join(DATA_DIR, 'db.backup.json');
+
+  const DEFAULT_COMPANY_PROFILE = {
+    name: 'PT. LINTAS DATA INTERNASIONAL',
+    legalName: 'PT. LINTAS DATA INTERNASIONAL',
+    address: 'My Republic Plaza, Jl. BSD Green Office Park Jl. BSD Grand Boulevard No.6 Wing A Lantai Dasar Zona 6, Sampora, Kec. Cisauk, Kabupaten Tangerang, Banten 15345',
+    website: 'e-office.ldi.co.id',
+    email: 'support@ldi.co.id',
+    phone: '087777040496',
+    whatsapp: '087777040496',
+    npwp: '01.234.567.8-411.000',
+    logoUrl: '',
+    faviconUrl: '',
+    bankDetails: [
+      {
+        id: 'bank-1',
+        bankName: 'Bank Central Asia (BCA)',
+        accountNumber: '8830-1928-33',
+        accountHolder: 'PT LINTAS DATA INTERNASIONAL',
+        branch: 'KCP BSD Green Office Park',
+        isDefault: true,
+        notes: 'Transfer Rekening Utama untuk Layanan Internet & Cloud',
+      },
+      {
+        id: 'bank-2',
+        bankName: 'Bank Mandiri',
+        accountNumber: '164-00-0982711-2',
+        accountHolder: 'PT LINTAS DATA INTERNASIONAL',
+        branch: 'KCP BSD City Tangerang',
+        isDefault: false,
+        notes: 'Rekening Cadangan Pembayaran Faktur Kontrak PKS',
+      },
+    ],
+    directorName: 'Irwan Setiawan, S.T.',
+    directorPosition: 'Direktur Utama',
+    financeManager: 'Siti Rahmawati, S.E.',
+    emailGatewayMode: 'mailketing',
+    mailketingApiKey: 'e6f901cb964cd1c0fb59453f3450329d',
+    mailketingSenderEmail: 'alwanemail@gmail.com',
+    smtpConfig: {
+      enabled: false,
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      username: '',
+      password: '',
+      fromName: 'PT. LINTAS DATA INTERNASIONAL',
+      fromEmail: 'admin@ldi.co.id',
+      providerPreset: 'gmail',
+    },
+    emailTemplates: {
+      autoSendSph: true,
+      autoSendInvoice: true,
+      defaultCc: 'finance@ldi.co.id, sales@ldi.co.id',
+      sphSubject: '[PT. LDI] Surat Penawaran Harga (SPH) #{DOC_NUMBER} - {CUSTOMER_NAME}',
+      sphBody: 'Kepada Yth. Bapak/Ibu Tim Manajemen {CUSTOMER_NAME},\n\nBersama email ini, kami dari PT. LINTAS DATA INTERNASIONAL menyampaikan Dokumen Resmi Surat Penawaran Harga (SPH) #{DOC_NUMBER}.\n\nTotal Nilai: {TOTAL_AMOUNT}\nTanggal: {DOC_DATE}\n\nSilakan periksa berkas PDF terlampir.',
+      pksSubject: '[PT. LDI] Dokumen Perjanjian Kerja Sama #{DOC_NUMBER} - {CUSTOMER_NAME}',
+      pksBody: 'Kepada Yth. Bapak/Ibu Pimpinan {CUSTOMER_NAME},\n\nTerlampir kami sampaikan Dokumen Resmi Kontrak Perjanjian Kerja Sama (PKS) #{DOC_NUMBER}.\n\nSilakan periksa berkas PDF terlampir.',
+      invoiceSubject: '[PT. LDI] Tagihan Invoice #{DOC_NUMBER} - {CUSTOMER_NAME}',
+      invoiceBody: 'Kepada Yth. Bagian Keuangan / Procurement {CUSTOMER_NAME},\n\nTerlampir kami kirimkan Faktur Tagihan (Invoice) #{DOC_NUMBER}.\n\nTotal Tagihan: {TOTAL_AMOUNT}\nJatuh Tempo: {DUE_DATE}\n\nMohon lakukan transfer ke rekening resmi PT. LDI.',
+    },
+  };
 
   const db: {
+    initialized: boolean;
+    companyProfile: any;
     customers: any[];
     sphs: any[];
     pkss: any[];
     invoices: any[];
+    activityLogs: any[];
   } = {
+    initialized: false,
+    companyProfile: { ...DEFAULT_COMPANY_PROFILE },
     customers: [],
     sphs: [],
     pkss: [],
     invoices: [],
+    activityLogs: [],
   };
 
   const seedDatabaseIfEmpty = () => {
-    if (db.sphs.length === 0 && db.pkss.length === 0 && db.invoices.length === 0) {
+    // CRITICAL: Only seed if NOT initialized AND all document and customer collections are empty
+    if (!db.initialized && db.customers.length === 0 && db.sphs.length === 0 && db.pkss.length === 0 && db.invoices.length === 0) {
       db.customers = [
         {
           id: 'cust-1',
@@ -197,8 +266,11 @@ async function startServer() {
         },
       ];
 
+      db.initialized = true;
       saveDatabase();
-      console.log('[DB SEED] Database seeded with default official documents (SPH/2026/08/001, PKS/2026/08/001, INV/2026/08/001).');
+      console.log('[DB SEED] Initial database seeded successfully with default sample documents.');
+    } else {
+      db.initialized = true;
     }
   };
 
@@ -207,15 +279,29 @@ async function startServer() {
       if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
+
+      let raw: string | null = null;
       if (fs.existsSync(DB_FILE)) {
-        const raw = fs.readFileSync(DB_FILE, 'utf-8');
+        raw = fs.readFileSync(DB_FILE, 'utf-8');
+      } else if (fs.existsSync(DB_BACKUP_FILE)) {
+        console.warn('[DB PERSISTENCE] db.json not found, recovering from db.backup.json...');
+        raw = fs.readFileSync(DB_BACKUP_FILE, 'utf-8');
+      }
+
+      if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed) {
+          if (parsed.initialized !== undefined) db.initialized = Boolean(parsed.initialized);
+          if (parsed.companyProfile && typeof parsed.companyProfile === 'object') {
+            db.companyProfile = { ...DEFAULT_COMPANY_PROFILE, ...parsed.companyProfile };
+          }
           if (Array.isArray(parsed.customers)) db.customers = parsed.customers;
           if (Array.isArray(parsed.sphs)) db.sphs = parsed.sphs;
           if (Array.isArray(parsed.pkss)) db.pkss = parsed.pkss;
           if (Array.isArray(parsed.invoices)) db.invoices = parsed.invoices;
-          console.log(`[DB PERSISTENCE] Loaded ${db.customers.length} customers, ${db.sphs.length} SPHs, ${db.pkss.length} PKSs, ${db.invoices.length} invoices from disk.`);
+          if (Array.isArray(parsed.activityLogs)) db.activityLogs = parsed.activityLogs;
+
+          console.log(`[DB PERSISTENCE] Loaded ${db.customers.length} customers, ${db.sphs.length} SPHs, ${db.pkss.length} PKSs, ${db.invoices.length} invoices from disk. Company Profile: "${db.companyProfile?.name || 'Default'}", Director: "${db.companyProfile?.directorName || 'Default'}".`);
         }
       }
       seedDatabaseIfEmpty();
@@ -230,7 +316,14 @@ async function startServer() {
       if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
-      fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf-8');
+      db.initialized = true;
+      const jsonStr = JSON.stringify(db, null, 2);
+      fs.writeFileSync(DB_FILE, jsonStr, 'utf-8');
+      try {
+        fs.writeFileSync(DB_BACKUP_FILE, jsonStr, 'utf-8');
+      } catch (backupErr) {
+        // Safe ignore backup write error
+      }
     } catch (err) {
       console.warn('[DB PERSISTENCE] Failed to save database to disk:', err);
     }
@@ -239,11 +332,145 @@ async function startServer() {
   // Initial load from disk
   loadDatabase();
 
+  // Company Profile Persistence Endpoints (Logo, Icon, Rekening Bank, Direktur, Finance, Templates, SMTP)
+  app.all(['/api/company-profile', '/api/settings/company-profile'], (req, res) => {
+    if (req.method === 'GET') {
+      return res.json(db.companyProfile || DEFAULT_COMPANY_PROFILE);
+    }
+
+    if (req.method === 'POST' || req.method === 'PUT') {
+      const incoming = req.body || {};
+      db.companyProfile = {
+        ...(db.companyProfile || DEFAULT_COMPANY_PROFILE),
+        ...incoming,
+      };
+      db.initialized = true;
+      saveDatabase();
+
+      console.log(`[DB PROFILE UPDATE] Company profile updated & persisted to disk:`);
+      console.log(` - Legal Name      : ${db.companyProfile.legalName || db.companyProfile.name}`);
+      console.log(` - Director Name    : ${db.companyProfile.directorName}`);
+      console.log(` - Finance Manager  : ${db.companyProfile.financeManager}`);
+      console.log(` - Bank Accounts    : ${db.companyProfile.bankDetails?.length || 0} account(s)`);
+      console.log(` - Custom Logo      : ${db.companyProfile.logoUrl ? 'Yes (Configured)' : 'No'}`);
+      console.log(` - Custom Icon      : ${db.companyProfile.faviconUrl ? 'Yes (Configured)' : 'No'}`);
+      console.log(` - SMTP Relay       : ${db.companyProfile.smtpConfig?.host || 'None'}`);
+
+      return res.json({
+        success: true,
+        message: 'Profil perusahaan & pengaturan berhasil disimpan permanen ke server database.',
+        companyProfile: db.companyProfile,
+      });
+    }
+
+    res.status(405).json({ error: 'Method not allowed' });
+  });
+
+  // Database Backup Download Endpoint
+  app.get('/api/database/backup', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="ldi_database_backup_${new Date().toISOString().split('T')[0]}.json"`);
+    res.json({
+      success: true,
+      backupVersion: '2.0',
+      exportedAt: new Date().toISOString(),
+      database: db,
+    });
+  });
+
+  // Database Restore Endpoint
+  app.post('/api/database/restore', (req, res) => {
+    try {
+      const payload = req.body?.database || req.body;
+      if (!payload || typeof payload !== 'object') {
+        return res.status(400).json({ success: false, message: 'Berkas JSON database tidak valid.' });
+      }
+
+      if (payload.companyProfile && typeof payload.companyProfile === 'object') {
+        db.companyProfile = { ...DEFAULT_COMPANY_PROFILE, ...payload.companyProfile };
+      }
+      if (Array.isArray(payload.customers)) db.customers = payload.customers;
+      if (Array.isArray(payload.sphs)) db.sphs = payload.sphs;
+      if (Array.isArray(payload.pkss)) db.pkss = payload.pkss;
+      if (Array.isArray(payload.invoices)) db.invoices = payload.invoices;
+      if (Array.isArray(payload.activityLogs)) db.activityLogs = payload.activityLogs;
+
+      db.initialized = true;
+      saveDatabase();
+
+      console.log(`[DB RESTORE] Database successfully restored from backup! (${db.customers.length} customers, ${db.sphs.length} SPHs, ${db.pkss.length} PKSs, ${db.invoices.length} invoices)`);
+      return res.json({
+        success: true,
+        message: `Database berhasil dipulihkan: ${db.customers.length} Pelanggan, ${db.sphs.length} SPH, ${db.pkss.length} PKS, ${db.invoices.length} Invoice.`,
+        database: db,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: `Gagal memulihkan database: ${err.message}` });
+    }
+  });
+
+  // Bulk Customer Import Endpoint
+  app.post('/api/customers/bulk', (req, res) => {
+    const list = Array.isArray(req.body) ? req.body : req.body?.customers;
+    if (!Array.isArray(list)) {
+      return res.status(400).json({ success: false, message: 'Payload harus berupa array data pelanggan.' });
+    }
+
+    let addedCount = 0;
+    for (const item of list) {
+      if (!item || !item.companyName) continue;
+      const custId = item.id || `CUST-${String(db.customers.length + 1).padStart(3, '0')}`;
+      const existingIdx = db.customers.findIndex((c: any) => c.id === custId || c.companyName.toLowerCase() === item.companyName.toLowerCase());
+      const record = {
+        ...item,
+        id: custId,
+        createdAt: item.createdAt || new Date().toISOString().split('T')[0],
+      };
+      if (existingIdx !== -1) {
+        db.customers[existingIdx] = { ...db.customers[existingIdx], ...record };
+      } else {
+        db.customers.push(record);
+        addedCount++;
+      }
+    }
+
+    db.initialized = true;
+    saveDatabase();
+    res.json({ success: true, count: list.length, added: addedCount, customers: db.customers });
+  });
+
+  // Bulk Invoice Import Endpoint
+  app.post('/api/invoices/bulk', (req, res) => {
+    const list = Array.isArray(req.body) ? req.body : req.body?.invoices;
+    if (!Array.isArray(list)) {
+      return res.status(400).json({ success: false, message: 'Payload harus berupa array data invoice.' });
+    }
+
+    let addedCount = 0;
+    for (const item of list) {
+      if (!item) continue;
+      const invId = item.id || `INV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const existingIdx = db.invoices.findIndex((i: any) => i.id === invId || (item.invoiceNumber && i.invoiceNumber === item.invoiceNumber));
+      if (existingIdx !== -1) {
+        db.invoices[existingIdx] = { ...db.invoices[existingIdx], ...item };
+      } else {
+        db.invoices.push({ ...item, id: invId });
+        addedCount++;
+      }
+    }
+
+    db.initialized = true;
+    saveDatabase();
+    res.json({ success: true, count: list.length, added: addedCount, invoices: db.invoices });
+  });
+
   // Health Check Endpoint
   app.get('/api/health', (req, res) => {
     res.json({
       status: 'online',
       database: 'local-express',
+      initialized: db.initialized,
+      profileConfigured: Boolean(db.companyProfile && db.companyProfile.name),
       records: {
         customers: db.customers.length,
         sphs: db.sphs.length,
@@ -1634,23 +1861,29 @@ async function startServer() {
     });
   });
 
-  // Batch Sync Endpoint
+  // Batch Sync Endpoint (Persists all data including company profile, logo, icon, bank accounts)
   app.post('/api/sync', (req, res) => {
-    const { customers, sphs, pkss, invoices } = req.body || {};
+    const { customers, sphs, pkss, invoices, companyProfile, activityLogs } = req.body || {};
     if (customers && Array.isArray(customers)) db.customers = customers;
     if (sphs && Array.isArray(sphs)) db.sphs = sphs;
     if (pkss && Array.isArray(pkss)) db.pkss = pkss;
     if (invoices && Array.isArray(invoices)) db.invoices = invoices;
+    if (companyProfile && typeof companyProfile === 'object') {
+      db.companyProfile = { ...(db.companyProfile || DEFAULT_COMPANY_PROFILE), ...companyProfile };
+    }
+    if (activityLogs && Array.isArray(activityLogs)) db.activityLogs = activityLogs;
+    db.initialized = true;
     saveDatabase();
     res.json({
       success: true,
       count: (customers?.length || 0) + (sphs?.length || 0) + (pkss?.length || 0) + (invoices?.length || 0),
+      profileSaved: Boolean(companyProfile),
     });
   });
 
   // Auto-Merge Discrepancies Sync Endpoint (Cloudflare D1 <-> Server DB)
   app.post('/api/sync/auto-merge', (req, res) => {
-    const { customers = [], sphs = [], pkss = [], invoices = [] } = req.body || {};
+    const { customers = [], sphs = [], pkss = [], invoices = [], companyProfile, activityLogs = [] } = req.body || {};
 
     let discrepanciesResolved = 0;
 
@@ -1680,6 +1913,15 @@ async function startServer() {
     db.sphs = mergeCollection(sphs, db.sphs);
     db.pkss = mergeCollection(pkss, db.pkss);
     db.invoices = mergeCollection(invoices, db.invoices);
+
+    if (companyProfile && typeof companyProfile === 'object') {
+      db.companyProfile = { ...(db.companyProfile || DEFAULT_COMPANY_PROFILE), ...companyProfile };
+    }
+    if (activityLogs.length > 0) {
+      db.activityLogs = mergeCollection(activityLogs, db.activityLogs || []);
+    }
+
+    db.initialized = true;
     saveDatabase();
 
     return res.json({
@@ -1692,6 +1934,7 @@ async function startServer() {
         sphs: db.sphs,
         pkss: db.pkss,
         invoices: db.invoices,
+        companyProfile: db.companyProfile,
       },
     });
   });

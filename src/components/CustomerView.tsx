@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Users,
   Plus,
@@ -14,7 +14,10 @@ import {
   MapPin,
   Building2,
   CheckCircle2,
-  Clock
+  Clock,
+  Upload,
+  Download,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Customer, Invoice, PKS, SPH } from '../types';
 import { formatDateIndonesian, formatIDR } from '../utils/formatters';
@@ -27,6 +30,7 @@ interface CustomerViewProps {
   onAddCustomer: (customer: Customer) => void;
   onUpdateCustomer: (customer: Customer) => void;
   onDeleteCustomer: (id: string) => void;
+  onBulkAddCustomers?: (customers: Customer[]) => void;
   onCreateSphForCustomer: (customer: Customer) => void;
   onCreateInvoiceForCustomer: (customer: Customer) => void;
 }
@@ -47,6 +51,104 @@ export const CustomerView: React.FC<CustomerViewProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [selectedHistoryCustomer, setSelectedHistoryCustomer] = useState<Customer | null>(null);
+
+  // Bulk Import State
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importRawText, setImportRawText] = useState('');
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const fileUploadRef = useRef<HTMLInputElement>(null);
+
+  const handleUploadFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const content = evt.target?.result as string;
+      if (content) {
+        setImportRawText(content);
+        setImportStatus(`Berkas "${file.name}" siap diimpor (${(file.size / 1024).toFixed(1)} KB). Klik "Proses Simpan ke Database".`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleProcessImport = () => {
+    if (!importRawText.trim()) {
+      alert('Harap unggah berkas atau tempelkan data pelanggan terlebih dahulu.');
+      return;
+    }
+
+    try {
+      let parsedCustomers: any[] = [];
+      const trimmed = importRawText.trim();
+
+      if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+        // Parse JSON
+        const rawJson = JSON.parse(trimmed);
+        parsedCustomers = Array.isArray(rawJson) ? rawJson : (rawJson.customers || [rawJson]);
+      } else {
+        // Parse CSV
+        const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean);
+        if (lines.length <= 1) {
+          alert('Data CSV tidak memiliki baris data.');
+          return;
+        }
+
+        const headers = lines[0].split(',').map((h) => h.trim().replace(/^["']|["']$/g, '').toLowerCase());
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(',').map((c) => c.trim().replace(/^["']|["']$/g, ''));
+          const rowObj: any = {};
+          headers.forEach((h, idx) => {
+            rowObj[h] = cols[idx] || '';
+          });
+          parsedCustomers.push({
+            companyName: rowObj.companyname || rowObj.perusahaan || rowObj.name || rowObj.nama || 'Perusahaan',
+            contactPerson: rowObj.contactperson || rowObj.kontak || rowObj.pic || 'PIC',
+            position: rowObj.position || rowObj.jabatan || 'Penanggung Jawab',
+            email: rowObj.email || 'customer@ldi.co.id',
+            phone: rowObj.phone || rowObj.telepon || rowObj.hp || '08123456789',
+            address: rowObj.address || rowObj.alamat || '',
+            npwp: rowObj.npwp || '',
+            status: rowObj.status === 'Lead' || rowObj.status === 'Nonaktif' ? rowObj.status : 'Aktif',
+            notes: rowObj.notes || rowObj.catatan || '',
+          });
+        }
+      }
+
+      const validCustomers: Customer[] = parsedCustomers.map((p, idx) => ({
+        id: p.id || `CUST-${String(customers.length + idx + 1).padStart(3, '0')}`,
+        companyName: p.companyName || p.name || 'Perusahaan Pelanggan',
+        contactPerson: p.contactPerson || p.pic || 'PIC',
+        position: p.position || 'Manager',
+        email: p.email || 'info@client.com',
+        phone: p.phone || '08123456789',
+        address: p.address || '',
+        npwp: p.npwp || '',
+        status: p.status || 'Aktif',
+        notes: p.notes || '',
+        createdAt: p.createdAt || new Date().toISOString().split('T')[0],
+      }));
+
+      if (validCustomers.length === 0) {
+        alert('Tidak ditemukan data pelanggan yang valid.');
+        return;
+      }
+
+      if (onBulkAddCustomers) {
+        onBulkAddCustomers(validCustomers);
+      } else {
+        validCustomers.forEach((c) => onAddCustomer(c));
+      }
+
+      alert(`✅ Berhasil mengimpor/mengunggah ${validCustomers.length} data pelanggan ke server backend!`);
+      setIsImportModalOpen(false);
+      setImportRawText('');
+      setImportStatus(null);
+    } catch (err: any) {
+      alert(`Format berkas tidak valid: ${err.message}`);
+    }
+  };
 
   // Form State
   const [formData, setFormData] = useState<Omit<Customer, 'id' | 'createdAt'>>({
@@ -134,13 +236,24 @@ export const CustomerView: React.FC<CustomerViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={handleOpenAddModal}
-          className="flex items-center gap-2 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition self-start md:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          Tambah Pelanggan Baru
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+          <button
+            type="button"
+            onClick={() => setIsImportModalOpen(true)}
+            className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-sm transition"
+          >
+            <Upload className="w-4 h-4" />
+            Unggah / Impor Pelanggan
+          </button>
+
+          <button
+            onClick={handleOpenAddModal}
+            className="flex items-center gap-2 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition"
+          >
+            <Plus className="w-4 h-4" />
+            Tambah Pelanggan Baru
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}
@@ -539,6 +652,116 @@ export const CustomerView: React.FC<CustomerViewProps> = ({
                 ) : (
                   <p className="text-slate-400 italic">Belum ada invoice tagihan.</p>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Customer Import Modal */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-sm">Unggah / Impor Data Pelanggan</h3>
+                  <p className="text-[11px] text-slate-500">
+                    Mendukung berkas JSON atau teks baris CSV (Nama Perusahaan, PIC, Email, HP, Alamat).
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setImportStatus(null);
+                }}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              {/* File upload selector */}
+              <div className="p-4 border-2 border-dashed border-emerald-200 bg-emerald-50/50 rounded-xl text-center space-y-2">
+                <input
+                  ref={fileUploadRef}
+                  type="file"
+                  accept=".json,.csv,text/csv,application/json,text/plain"
+                  onChange={handleUploadFileChange}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileUploadRef.current?.click()}
+                  className="inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-sm transition"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  Pilih Berkas Pelanggan (.JSON atau .CSV)
+                </button>
+                <p className="text-[11px] text-slate-500">
+                  Atau tempelkan isi data pelanggan langsung pada kotak teks di bawah.
+                </p>
+              </div>
+
+              {importStatus && (
+                <div className="p-2.5 bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-xl font-bold text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-700" />
+                  <span>{importStatus}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="font-bold text-slate-800 block mb-1">
+                  Isi Data JSON / CSV (Dapat diedit langsung)
+                </label>
+                <textarea
+                  rows={8}
+                  placeholder={`Contoh JSON:
+[
+  {
+    "companyName": "PT. Solusi Digital Mandiri",
+    "contactPerson": "Ahmad Dani",
+    "position": "IT Manager",
+    "email": "ahmad@solusidigital.co.id",
+    "phone": "081298765432",
+    "address": "Gedung Cyber Lt. 5, Jakarta Selatan",
+    "npwp": "01.888.777.6-012.000"
+  }
+]`}
+                  value={importRawText}
+                  onChange={(e) => setImportRawText(e.target.value)}
+                  className="w-full p-3 font-mono text-[11px] border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-slate-50 focus:bg-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+              <span className="text-[11px] text-slate-400">
+                Data akan tersimpan permanen di server <code>data/db.json</code>.
+              </span>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsImportModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition text-xs"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleProcessImport}
+                  className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl shadow transition text-xs flex items-center gap-1.5"
+                >
+                  <Upload className="w-4 h-4" />
+                  Proses Simpan ke Database
+                </button>
               </div>
             </div>
           </div>

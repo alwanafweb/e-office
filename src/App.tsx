@@ -43,6 +43,12 @@ import {
   apiUpdateInvoice,
   apiDeleteInvoice,
   apiSyncAllData,
+  apiGetCompanyProfile,
+  apiUpdateCompanyProfile,
+  apiBulkCreateCustomers,
+  apiBulkCreateInvoices,
+  apiBackupDatabase,
+  apiRestoreDatabase,
 } from './api/client';
 import {
   getDecryptedItem,
@@ -151,7 +157,7 @@ export default function App() {
     };
   }, []);
 
-  // Detect /loginadmin path, hash or search parameter to trigger Admin Login Modal
+  // Detect /admin, /login, /loginadmin path, hash or search parameter to trigger Admin Login Modal
   useEffect(() => {
     const checkLoginAdminRoute = () => {
       if (typeof window !== 'undefined') {
@@ -159,11 +165,16 @@ export default function App() {
         const search = window.location.search.toLowerCase();
         const hash = window.location.hash.toLowerCase();
 
-        if (path.includes('loginadmin') || search.includes('loginadmin') || hash.includes('loginadmin')) {
+        const isAdminRoute =
+          path.includes('loginadmin') || search.includes('loginadmin') || hash.includes('loginadmin') ||
+          path.endsWith('/admin') || path.includes('/admin/') || search.includes('admin') || hash.includes('admin') ||
+          path.endsWith('/login') || path.includes('/login/') || search.includes('login') || hash.includes('login');
+
+        if (isAdminRoute) {
           setIsAuthModalOpen(true);
           // Clean URL path back to root without reloading page
           if (window.history && window.history.replaceState) {
-            window.history.replaceState({}, document.title, window.location.pathname.replace(/\/loginadmin/i, '/').replace(/\?loginadmin/i, ''));
+            window.history.replaceState({}, document.title, window.location.origin + window.location.pathname.replace(/\/loginadmin|\/admin|\/login/gi, '') || '/');
           }
         }
       }
@@ -225,38 +236,23 @@ export default function App() {
   }, [companyProfile.faviconUrl, companyProfile.logoUrl, companyProfile.name]);
 
   const [customers, setCustomers] = useState<Customer[]>(() => {
-    const resetDone = getDecryptedItem<string>('ldi_reset_v2_clean');
-    if (!resetDone) {
-      removeEncryptedItem('ldi_customers');
-      removeEncryptedItem('ldi_sph_list');
-      removeEncryptedItem('ldi_pks_list');
-      removeEncryptedItem('ldi_invoices');
-      setEncryptedItem('ldi_reset_v2_clean', 'true');
-      return [];
-    }
     const saved = getDecryptedItem<Customer[]>('ldi_customers');
-    return saved || [];
+    return saved && Array.isArray(saved) ? saved : [];
   });
 
   const [sphList, setSphList] = useState<SPH[]>(() => {
-    const resetDone = getDecryptedItem<string>('ldi_reset_v2_clean');
-    if (!resetDone) return [];
     const saved = getDecryptedItem<SPH[]>('ldi_sph_list');
-    return saved || [];
+    return saved && Array.isArray(saved) ? saved : [];
   });
 
   const [pksList, setPksList] = useState<PKS[]>(() => {
-    const resetDone = getDecryptedItem<string>('ldi_reset_v2_clean');
-    if (!resetDone) return [];
     const saved = getDecryptedItem<PKS[]>('ldi_pks_list');
-    return saved || [];
+    return saved && Array.isArray(saved) ? saved : [];
   });
 
   const [invoices, setInvoices] = useState<Invoice[]>(() => {
-    const resetDone = getDecryptedItem<string>('ldi_reset_v2_clean');
-    if (!resetDone) return [];
     const saved = getDecryptedItem<Invoice[]>('ldi_invoices');
-    return saved || [];
+    return saved && Array.isArray(saved) ? saved : [];
   });
 
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() => {
@@ -343,7 +339,8 @@ export default function App() {
         if (health && health.status === 'online') {
           if (isMounted) setD1Status('loading');
 
-          const [fetchedCustomers, fetchedSphs, fetchedPkss, fetchedInvoices] = await Promise.all([
+          const [fetchedProfile, fetchedCustomers, fetchedSphs, fetchedPkss, fetchedInvoices] = await Promise.all([
+            apiGetCompanyProfile().catch(() => null),
             apiGetCustomers().catch(() => []),
             apiGetSPHs().catch(() => []),
             apiGetPKSs().catch(() => []),
@@ -351,29 +348,101 @@ export default function App() {
           ]);
 
           if (isMounted) {
-            // Merge or populate state & sync server if client has newer local records
-            if (fetchedCustomers && fetchedCustomers.length > 0) {
-              setCustomers(fetchedCustomers);
-            } else if (customers.length > 0) {
-              apiSyncAllData({ customers }).catch(() => {});
+            // 1. Company Profile Persistence Handling (Logo, Icon, Rekening, Direktur, Finance)
+            if (fetchedProfile && fetchedProfile.name) {
+              const hasCustomOnServer = Boolean(
+                fetchedProfile.logoUrl ||
+                fetchedProfile.faviconUrl ||
+                (fetchedProfile.bankDetails && fetchedProfile.bankDetails.length > 0) ||
+                fetchedProfile.directorName !== COMPANY_PROFILE.directorName ||
+                fetchedProfile.financeManager !== COMPANY_PROFILE.financeManager ||
+                fetchedProfile.smtpConfig?.enabled
+              );
+
+              const hasCustomLocally = Boolean(
+                companyProfile.logoUrl ||
+                companyProfile.faviconUrl ||
+                (companyProfile.bankDetails && companyProfile.bankDetails.length > 0) ||
+                companyProfile.directorName !== COMPANY_PROFILE.directorName ||
+                companyProfile.financeManager !== COMPANY_PROFILE.financeManager ||
+                companyProfile.smtpConfig?.enabled
+              );
+
+              if (hasCustomOnServer) {
+                setCompanyProfile(fetchedProfile);
+                setEncryptedItem('ldi_company_profile', fetchedProfile);
+                console.log('[PERSISTENCE] Loaded customized company profile from server disk.');
+              } else if (hasCustomLocally) {
+                // Server doesn't have custom settings yet, push local customizations to server!
+                apiUpdateCompanyProfile(companyProfile).catch(() => {});
+                console.log('[PERSISTENCE] Pushed local company profile customizations to server disk.');
+              } else {
+                setCompanyProfile(fetchedProfile);
+              }
+            } else if (companyProfile) {
+              apiUpdateCompanyProfile(companyProfile).catch(() => {});
             }
 
-            if (fetchedSphs && fetchedSphs.length > 0) {
-              setSphList(fetchedSphs);
-            } else if (sphList.length > 0) {
-              apiSyncAllData({ sphs: sphList }).catch(() => {});
+            // 2. Safe Merge Customers (Never discard uploaded customer data)
+            const custMap = new Map<string, Customer>();
+            (fetchedCustomers || []).forEach((c) => c && c.id && custMap.set(c.id, c));
+            (customers || []).forEach((c) => {
+              if (c && c.id && !custMap.has(c.id)) {
+                custMap.set(c.id, c);
+              }
+            });
+            const mergedCustomers = Array.from(custMap.values());
+            if (mergedCustomers.length > 0) {
+              setCustomers(mergedCustomers);
+              setEncryptedItem('ldi_customers', mergedCustomers);
+              if (mergedCustomers.length > (fetchedCustomers?.length || 0)) {
+                apiSyncAllData({ customers: mergedCustomers }).catch(() => {});
+              }
             }
 
-            if (fetchedPkss && fetchedPkss.length > 0) {
-              setPksList(fetchedPkss);
-            } else if (pksList.length > 0) {
-              apiSyncAllData({ pkss: pksList }).catch(() => {});
+            // 3. Safe Merge SPH
+            const sphMap = new Map<string, SPH>();
+            (fetchedSphs || []).forEach((s) => s && s.id && sphMap.set(s.id, s));
+            (sphList || []).forEach((s) => {
+              if (s && s.id && !sphMap.has(s.id)) {
+                sphMap.set(s.id, s);
+              }
+            });
+            const mergedSphs = Array.from(sphMap.values());
+            if (mergedSphs.length > 0) {
+              setSphList(mergedSphs);
+              setEncryptedItem('ldi_sph_list', mergedSphs);
             }
 
-            if (fetchedInvoices && fetchedInvoices.length > 0) {
-              setInvoices(fetchedInvoices);
-            } else if (invoices.length > 0) {
-              apiSyncAllData({ invoices }).catch(() => {});
+            // 4. Safe Merge PKS
+            const pksMap = new Map<string, PKS>();
+            (fetchedPkss || []).forEach((p) => p && p.id && pksMap.set(p.id, p));
+            (pksList || []).forEach((p) => {
+              if (p && p.id && !pksMap.has(p.id)) {
+                pksMap.set(p.id, p);
+              }
+            });
+            const mergedPkss = Array.from(pksMap.values());
+            if (mergedPkss.length > 0) {
+              setPksList(mergedPkss);
+              setEncryptedItem('ldi_pks_list', mergedPkss);
+            }
+
+            // 5. Safe Merge Invoices (Never discard uploaded invoice data)
+            const invMap = new Map<string, Invoice>();
+            (fetchedInvoices || []).forEach((i) => i && i.id && invMap.set(i.id, i));
+            (invoices || []).forEach((i) => {
+              if (i && i.id && !invMap.has(i.id)) {
+                invMap.set(i.id, i);
+              }
+            });
+            const mergedInvoices = Array.from(invMap.values());
+            if (mergedInvoices.length > 0) {
+              setInvoices(mergedInvoices);
+              setEncryptedItem('ldi_invoices', mergedInvoices);
+              if (mergedInvoices.length > (fetchedInvoices?.length || 0)) {
+                apiSyncAllData({ invoices: mergedInvoices }).catch(() => {});
+              }
             }
 
             setD1Status('connected');
@@ -1092,7 +1161,83 @@ export default function App() {
 
   const handleUpdateProfile = (profile: CompanyProfile) => {
     setCompanyProfile(profile);
+    setEncryptedItem('ldi_company_profile', profile);
     addActivityLog('Diubah', 'Pengaturan', 'Profil Perusahaan', 'Memperbarui profil perusahaan, template email, & stempel TTD');
+
+    // Persist immediately to server backend (data/db.json)
+    apiUpdateCompanyProfile(profile)
+      .then((res) => {
+        console.log('[PERSISTENCE] Company profile saved permanently to server disk:', res);
+      })
+      .catch((err) => {
+        console.error('[PERSISTENCE ERROR] Failed to save company profile to server:', err);
+      });
+  };
+
+  const handleBulkAddCustomers = (newCustomers: Customer[]) => {
+    if (!newCustomers || newCustomers.length === 0) return;
+    const existingMap = new Map<string, Customer>();
+    customers.forEach((c) => existingMap.set(c.id, c));
+    newCustomers.forEach((c) => existingMap.set(c.id, c));
+    const merged = Array.from(existingMap.values());
+
+    setCustomers(merged);
+    setEncryptedItem('ldi_customers', merged);
+    addActivityLog('Dibuat', 'Pelanggan', 'Impor Masal', `Berhasil mengunggah/mengimpor ${newCustomers.length} data pelanggan ke sistem`);
+
+    apiBulkCreateCustomers(newCustomers).catch((err) => {
+      console.error('Failed to bulk upload customers to server:', err);
+    });
+  };
+
+  const handleBulkAddInvoices = (newInvoices: Invoice[]) => {
+    if (!newInvoices || newInvoices.length === 0) return;
+    const existingMap = new Map<string, Invoice>();
+    invoices.forEach((i) => existingMap.set(i.id, i));
+    newInvoices.forEach((i) => existingMap.set(i.id, i));
+    const merged = Array.from(existingMap.values());
+
+    setInvoices(merged);
+    setEncryptedItem('ldi_invoices', merged);
+    addActivityLog('Dibuat', 'Invoice', 'Impor Masal', `Berhasil mengunggah/mengimpor ${newInvoices.length} data invoice ke sistem`);
+
+    apiBulkCreateInvoices(newInvoices).catch((err) => {
+      console.error('Failed to bulk upload invoices to server:', err);
+    });
+  };
+
+  const handleRestoreDatabase = async (databasePayload: any) => {
+    try {
+      const res = await apiRestoreDatabase(databasePayload);
+      if (res && res.success && res.database) {
+        if (res.database.companyProfile) {
+          setCompanyProfile(res.database.companyProfile);
+          setEncryptedItem('ldi_company_profile', res.database.companyProfile);
+        }
+        if (Array.isArray(res.database.customers)) {
+          setCustomers(res.database.customers);
+          setEncryptedItem('ldi_customers', res.database.customers);
+        }
+        if (Array.isArray(res.database.sphs)) {
+          setSphList(res.database.sphs);
+          setEncryptedItem('ldi_sph_list', res.database.sphs);
+        }
+        if (Array.isArray(res.database.pkss)) {
+          setPksList(res.database.pkss);
+          setEncryptedItem('ldi_pks_list', res.database.pkss);
+        }
+        if (Array.isArray(res.database.invoices)) {
+          setInvoices(res.database.invoices);
+          setEncryptedItem('ldi_invoices', res.database.invoices);
+        }
+        addActivityLog('Sistem', 'Pengaturan', 'Database', 'Memulihkan database lengkap dari berkas cadangan.');
+        alert('✅ Sukses! Database lengkap berhasil dipulihkan dari berkas cadangan dan tersimpan di server.');
+      } else {
+        alert(`❌ Gagal memulihkan database: ${res?.message || 'Format tidak didukung'}`);
+      }
+    } catch (err: any) {
+      alert(`❌ Terjadi kendala saat memulihkan database: ${err.message || 'Error koneksi'}`);
+    }
   };
 
   return (
@@ -1137,6 +1282,7 @@ export default function App() {
             onAddCustomer={handleAddCustomer}
             onUpdateCustomer={handleUpdateCustomer}
             onDeleteCustomer={handleDeleteCustomer}
+            onBulkAddCustomers={handleBulkAddCustomers}
             onCreateSphForCustomer={handleCreateSphForCustomer}
             onCreateInvoiceForCustomer={handleCreateInvoiceForCustomer}
           />
@@ -1185,6 +1331,7 @@ export default function App() {
             onAddInvoice={handleAddInvoice}
             onUpdateInvoice={handleUpdateInvoice}
             onDeleteInvoice={handleDeleteInvoice}
+            onBulkAddInvoices={handleBulkAddInvoices}
             onBatchDeleteInvoice={handleBatchDeleteInvoice}
             onBatchUpdateInvoiceStatus={handleBatchUpdateInvoiceStatus}
             onPreviewInvoice={(inv) => setPreviewDoc({ type: 'Invoice', data: inv })}
@@ -1208,7 +1355,12 @@ export default function App() {
         {activeTab === 'settings' && currentUser && (
           <CompanySettingsView
             companyProfile={companyProfile}
+            customers={customers}
+            sphList={sphList}
+            pksList={pksList}
+            invoices={invoices}
             onUpdateProfile={handleUpdateProfile}
+            onRestoreDatabase={handleRestoreDatabase}
             onResetAllData={handleResetAllData}
           />
         )}

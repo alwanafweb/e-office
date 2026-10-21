@@ -1,4 +1,4 @@
-import { Customer, SPH, PKS, Invoice, SmtpConfig } from '../types';
+import { Customer, SPH, PKS, Invoice, SmtpConfig, CompanyProfile, ActivityLog } from '../types';
 
 /**
  * Returns the configured Cloudflare Worker API URL
@@ -239,6 +239,56 @@ export const apiGetRecurringInvoiceStatus = async (): Promise<{
 };
 
 // ==========================================
+// COMPANY PROFILE & LEGITIMACY PERSISTENCE API
+// ==========================================
+export const apiGetCompanyProfile = async (): Promise<CompanyProfile | null> => {
+  try {
+    return await apiFetch<CompanyProfile>('/api/company-profile');
+  } catch (err) {
+    console.warn('[API] Could not fetch company profile from server, using local fallback:', err);
+    return null;
+  }
+};
+
+export const apiUpdateCompanyProfile = async (profile: Partial<CompanyProfile>): Promise<CompanyProfile> => {
+  return apiFetch<CompanyProfile>('/api/company-profile', {
+    method: 'POST',
+    body: JSON.stringify(profile),
+  });
+};
+
+// ==========================================
+// FULL DATABASE BACKUP & RESTORE API
+// ==========================================
+export const apiBackupDatabase = async (): Promise<any> => {
+  return apiFetch<any>('/api/database/backup');
+};
+
+export const apiRestoreDatabase = async (databasePayload: any): Promise<{ success: boolean; message: string; database?: any }> => {
+  return apiFetch<{ success: boolean; message: string; database?: any }>('/api/database/restore', {
+    method: 'POST',
+    body: JSON.stringify(databasePayload),
+  });
+};
+
+// ==========================================
+// BULK DATA IMPORT API
+// ==========================================
+export const apiBulkCreateCustomers = async (customers: Partial<Customer>[]): Promise<{ success: boolean; count: number; added: number; customers: Customer[] }> => {
+  return apiFetch<{ success: boolean; count: number; added: number; customers: Customer[] }>('/api/customers/bulk', {
+    method: 'POST',
+    body: JSON.stringify({ customers }),
+  });
+};
+
+export const apiBulkCreateInvoices = async (invoices: Partial<Invoice>[]): Promise<{ success: boolean; count: number; added: number; invoices: Invoice[] }> => {
+  return apiFetch<{ success: boolean; count: number; added: number; invoices: Invoice[] }>('/api/invoices/bulk', {
+    method: 'POST',
+    body: JSON.stringify({ invoices }),
+  });
+};
+
+// ==========================================
 // BATCH / BULK SYNC API
 // ==========================================
 export interface SyncDataPayload {
@@ -246,6 +296,8 @@ export interface SyncDataPayload {
   sphs?: SPH[];
   pkss?: PKS[];
   invoices?: Invoice[];
+  companyProfile?: CompanyProfile;
+  activityLogs?: ActivityLog[];
 }
 
 export const apiSyncAllData = async (data: SyncDataPayload): Promise<{ success: boolean; count: number }> => {

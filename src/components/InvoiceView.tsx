@@ -31,6 +31,7 @@ import {
   Send,
   Edit2,
   Mail,
+  Upload,
 } from 'lucide-react';
 import { CompanyProfile, Customer, Invoice, ItemService, PaymentRecord, PKS, ServiceCategory, SPH } from '../types';
 import { getDecryptedItem, setEncryptedItem, removeEncryptedItem } from '../utils/crypto';
@@ -62,6 +63,7 @@ interface InvoiceViewProps {
   onAddInvoice: (invoice: Invoice, options?: { sendEmail?: boolean }) => void;
   onUpdateInvoice: (invoice: Invoice) => void;
   onDeleteInvoice: (id: string) => void;
+  onBulkAddInvoices?: (invoices: Invoice[]) => void;
   onBatchDeleteInvoice?: (ids: string[]) => void;
   onBatchUpdateInvoiceStatus?: (ids: string[], status: Invoice['status']) => void;
   onPreviewInvoice: (invoice: Invoice) => void;
@@ -79,6 +81,7 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
   onAddInvoice,
   onUpdateInvoice,
   onDeleteInvoice,
+  onBulkAddInvoices,
   onBatchDeleteInvoice,
   onBatchUpdateInvoiceStatus,
   onPreviewInvoice,
@@ -90,6 +93,102 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('Semua');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+
+  // Bulk Invoice Import State
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importRawText, setImportRawText] = useState('');
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const invoiceFileUploadRef = React.useRef<HTMLInputElement>(null);
+
+  const handleUploadInvoiceFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const content = evt.target?.result as string;
+      if (content) {
+        setImportRawText(content);
+        setImportStatus(`Berkas invoice "${file.name}" terbaca (${(file.size / 1024).toFixed(1)} KB). Klik "Proses Simpan ke Database".`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleProcessInvoiceImport = () => {
+    if (!importRawText.trim()) {
+      alert('Harap unggah berkas atau tempelkan JSON data invoice terlebih dahulu.');
+      return;
+    }
+
+    try {
+      const rawJson = JSON.parse(importRawText.trim());
+      const rawList = Array.isArray(rawJson) ? rawJson : (rawJson.invoices || [rawJson]);
+
+      const validInvoices: Invoice[] = rawList.map((inv: any, idx: number) => {
+        const invNum = inv.invoiceNumber || generateDocNumber('INV', invoices.length + idx + 1);
+        return {
+          id: inv.id || `INV-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
+          invoiceNumber: invNum,
+          customerId: inv.customerId || 'cust-1',
+          customerName: inv.customerName || 'Perusahaan Pelanggan',
+          customerAddress: inv.customerAddress || '',
+          customerPhone: inv.customerPhone || '',
+          customerEmail: inv.customerEmail || 'billing@client.com',
+          customerRepresentative: inv.customerRepresentative || 'Finance Manager',
+          sphReference: inv.sphReference || undefined,
+          pksReference: inv.pksReference || undefined,
+          issueDate: inv.issueDate || new Date().toISOString().split('T')[0],
+          dueDate: inv.dueDate || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
+          billingType: inv.billingType || 'one_time',
+          autoSendMonthly: inv.autoSendMonthly ?? false,
+          items: Array.isArray(inv.items) && inv.items.length > 0 ? inv.items : [
+            {
+              id: 'item-1',
+              category: 'Internet Dedicated' as ServiceCategory,
+              name: 'Tagihan Layanan Internet / Cloud',
+              description: 'Layanan korporasi PT. LDI',
+              qty: 1,
+              unit: 'Bulan',
+              price: Number(inv.grandTotal || inv.subtotal || 10000000),
+              discount: 0,
+            }
+          ],
+          subtotal: Number(inv.subtotal || inv.grandTotal || 10000000),
+          discountTotal: Number(inv.discountTotal || 0),
+          taxPercent: Number(inv.taxPercent ?? 11),
+          taxAmount: Number(inv.taxAmount ?? Math.round((inv.subtotal || 10000000) * 0.11)),
+          grandTotal: Number(inv.grandTotal || Math.round((inv.subtotal || 10000000) * 1.11)),
+          status: inv.status || 'Belum Bayar',
+          bankInfo: inv.bankInfo || {
+            bankName: 'Bank Central Asia (BCA)',
+            accountNumber: '8830-1928-33',
+            accountHolder: 'PT LINTAS DATA INTERNASIONAL',
+            branch: 'KCP BSD Green Office Park',
+          },
+          signedByFinance: inv.signedByFinance || companyProfile?.financeManager || 'Siti Rahmawati, S.E.',
+        };
+      });
+
+      if (validInvoices.length === 0) {
+        alert('Tidak ada data invoice valid yang ditemukan.');
+        return;
+      }
+
+      if (onBulkAddInvoices) {
+        onBulkAddInvoices(validInvoices);
+      } else {
+        validInvoices.forEach((i) => onAddInvoice(i));
+      }
+
+      alert(`✅ Berhasil mengimpor/mengunggah ${validInvoices.length} invoice tagihan ke server!`);
+      setIsImportModalOpen(false);
+      setImportRawText('');
+      setImportStatus(null);
+    } catch (err: any) {
+      alert(`Format JSON tidak valid: ${err.message}`);
+    }
+  };
 
   // Bulk Selection States
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -705,6 +804,16 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
             <span>Ekspor Excel (.xlsx)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsImportModalOpen(true)}
+            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold text-xs px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer"
+            title="Unggah atau impor daftar invoice dalam format JSON"
+          >
+            <Upload className="w-4 h-4 text-slate-700" />
+            <span>Unggah / Impor Invoice</span>
           </button>
 
           <button
@@ -2087,6 +2196,116 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({
               >
                 Tutup
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Invoice Import Modal */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-sm">Unggah / Impor Data Invoice (.JSON)</h3>
+                  <p className="text-[11px] text-slate-500">
+                    Impor daftar invoice tagihan ke sistem secara masal.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setImportStatus(null);
+                }}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-4 border-2 border-dashed border-emerald-200 bg-emerald-50/50 rounded-xl text-center space-y-2">
+                <input
+                  ref={invoiceFileUploadRef}
+                  type="file"
+                  accept=".json,application/json,text/plain"
+                  onChange={handleUploadInvoiceFileChange}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => invoiceFileUploadRef.current?.click()}
+                  className="inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-sm transition"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  Pilih Berkas Invoice (.JSON)
+                </button>
+                <p className="text-[11px] text-slate-500">
+                  Atau tempelkan isi data JSON invoice langsung pada kotak teks di bawah.
+                </p>
+              </div>
+
+              {importStatus && (
+                <div className="p-2.5 bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-xl font-bold text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-700" />
+                  <span>{importStatus}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="font-bold text-slate-800 block mb-1">
+                  Isi Data JSON Invoice
+                </label>
+                <textarea
+                  rows={8}
+                  placeholder={`Contoh JSON:
+[
+  {
+    "invoiceNumber": "INV/2026/10/001",
+    "customerName": "PT. Solusi Digital Mandiri",
+    "customerEmail": "procurement@client.com",
+    "issueDate": "2026-10-01",
+    "dueDate": "2026-10-15",
+    "subtotal": 15000000,
+    "grandTotal": 16650000,
+    "status": "Belum Bayar"
+  }
+]`}
+                  value={importRawText}
+                  onChange={(e) => setImportRawText(e.target.value)}
+                  className="w-full p-3 font-mono text-[11px] border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-slate-50 focus:bg-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+              <span className="text-[11px] text-slate-400">
+                Tersimpan permanen di server <code>data/db.json</code>.
+              </span>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsImportModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition text-xs"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleProcessInvoiceImport}
+                  className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl shadow transition text-xs flex items-center gap-1.5"
+                >
+                  <Upload className="w-4 h-4" />
+                  Proses Simpan ke Database
+                </button>
+              </div>
             </div>
           </div>
         </div>

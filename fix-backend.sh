@@ -9,7 +9,20 @@ export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 
 echo "🚀 [1/4] Menarik update terbaru dari GitHub & Build bundle..."
 cd /var/www/ldi-app
+
+# Amankan data pelanggan & profil agar tidak tertimpa saat git pull
+if [ -f "/var/www/ldi-app/data/db.json" ]; then
+    mkdir -p /var/www/ldi-app/data
+    cp -f /var/www/ldi-app/data/db.json /var/www/ldi-app/data/db.user-backup.json 2>/dev/null || true
+fi
+
+git stash 2>/dev/null || true
 git pull origin main || git pull origin master || true
+
+if [ -f "/var/www/ldi-app/data/db.user-backup.json" ]; then
+    cp -f /var/www/ldi-app/data/db.user-backup.json /var/www/ldi-app/data/db.json 2>/dev/null || true
+fi
+
 npm install
 npm run build
 

@@ -1,27 +1,41 @@
-import React, { useState, useRef } from 'react';
-import { Building, Globe, Mail, Phone, MapPin, CreditCard, ShieldCheck, Save, Check, Upload, Image as ImageIcon, Trash2, Link, FileImage, RotateCcw, PenTool, Plus, Edit3, Star, Copy, PlusCircle, X, Send, Key, RefreshCw, FileText, CheckCircle2, AlertCircle, Paperclip, ExternalLink, Zap, Server, Shield, Lock, Eye, EyeOff, Info, HelpCircle, CheckCircle } from 'lucide-react';
-import { CompanyProfile, Invoice, PKS, SPH, SmtpConfig } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { Building, Globe, Mail, Phone, MapPin, CreditCard, ShieldCheck, Save, Check, Upload, Image as ImageIcon, Trash2, Link, FileImage, RotateCcw, PenTool, Plus, Edit3, Star, Copy, PlusCircle, X, Send, Key, RefreshCw, FileText, CheckCircle2, AlertCircle, Paperclip, ExternalLink, Zap, Server, Shield, Lock, Eye, EyeOff, Info, HelpCircle, CheckCircle, Download, Database, HardDrive } from 'lucide-react';
+import { CompanyProfile, Invoice, PKS, SPH, SmtpConfig, Customer } from '../types';
 import { COMPANY_PROFILE } from '../data/initialData';
 import { SignaturePad } from './SignaturePad';
 import { D1ConfigPanel } from './D1ConfigPanel';
 import { sendEmail } from '../api/mailService';
-import { apiUploadPdf, apiTestSmtpConnection, SmtpTestResult } from '../api/client';
+import { apiUploadPdf, apiTestSmtpConnection, SmtpTestResult, apiBackupDatabase, apiRestoreDatabase } from '../api/client';
 import { generateStandaloneDocPdfBase64 } from '../utils/pdfGenerator';
 import { formatDateIndonesian, formatIDR } from '../utils/formatters';
 import { buildFullEmailHtml, replaceEmailPlaceholders, DEFAULT_EMAIL_TEMPLATES } from '../utils/emailTemplateHelper';
 
 interface CompanySettingsViewProps {
   companyProfile: CompanyProfile;
+  customers?: Customer[];
+  sphList?: SPH[];
+  pksList?: PKS[];
+  invoices?: Invoice[];
   onUpdateProfile: (profile: CompanyProfile) => void;
+  onRestoreDatabase?: (db: any) => void;
   onResetAllData?: () => void;
 }
 
 export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
   companyProfile,
+  customers = [],
+  sphList = [],
+  pksList = [],
+  invoices = [],
   onUpdateProfile,
+  onRestoreDatabase,
   onResetAllData,
 }) => {
   const [profile, setProfile] = useState<CompanyProfile>(companyProfile);
+
+  useEffect(() => {
+    setProfile(companyProfile);
+  }, [companyProfile]);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [urlInput, setUrlInput] = useState(profile.logoUrl || '');
@@ -545,11 +559,93 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
     }));
   };
 
+  const [isExporting, setIsExporting] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const restoreFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDownloadFullBackup = async () => {
+    setIsExporting(true);
+    try {
+      let backupPayload: any = null;
+      try {
+        const res = await apiBackupDatabase();
+        if (res && res.database) {
+          backupPayload = res.database;
+        }
+      } catch (err) {
+        console.warn('Backup from API fallback to client state:', err);
+      }
+
+      if (!backupPayload) {
+        backupPayload = {
+          initialized: true,
+          companyProfile: profile,
+          customers,
+          sphs: sphList,
+          pkss: pksList,
+          invoices,
+          exportedAt: new Date().toISOString(),
+        };
+      }
+
+      const jsonStr = JSON.stringify(backupPayload, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ldi_database_backup_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(`Gagal mengunduh cadangan: ${err.message || 'Error'}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleRestoreFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.json')) {
+      alert('Format berkas harus berupa file .json');
+      return;
+    }
+
+    if (!window.confirm(`Yakin ingin memulihkan database dari berkas "${file.name}"? Seluruh data di server backend akan diperbarui sesuai isi berkas cadangan.`)) {
+      if (e.target) e.target.value = '';
+      return;
+    }
+
+    setIsRestoring(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const text = evt.target?.result as string;
+        const parsed = JSON.parse(text);
+        if (onRestoreDatabase) {
+          await onRestoreDatabase(parsed);
+        } else {
+          await apiRestoreDatabase(parsed);
+          window.location.reload();
+        }
+      } catch (err: any) {
+        alert(`Gagal memproses berkas cadangan: ${err.message}`);
+      } finally {
+        setIsRestoring(false);
+        if (e.target) e.target.value = '';
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onUpdateProfile(profile);
     setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 3000);
+    setTimeout(() => setSavedSuccess(false), 4000);
   };
 
   const handleSignatureUpload = (file: File) => {
@@ -690,18 +786,23 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div>
-          <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-            <Building className="w-6 h-6 text-blue-600" />
-            Pengaturan Profil & Legitimasi Perusahaan
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+              <Building className="w-6 h-6 text-blue-600" />
+              Pengaturan Profil & Legitimasi Perusahaan
+            </h2>
+            <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 text-[11px] font-bold px-3 py-1 rounded-full border border-emerald-200">
+              <HardDrive className="w-3.5 h-3.5" /> Database Server Aktif (db.json)
+            </span>
+          </div>
           <p className="text-slate-500 text-xs mt-1">
-            Atur identitas resmi PT. Lintas Data Internasional untuk Kop Surat PDF, logo perusahaan, rekening bank, dan tanda tangan direksi.
+            Atur identitas resmi PT. Lintas Data Internasional (Logo, Icon, Rekening Bank, TTD Direktur Utama & Finance). Data tersimpan permanen di server dan tidak hilang saat reboot.
           </p>
         </div>
 
         {savedSuccess && (
-          <div className="bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-2">
-            <Check className="w-4 h-4" /> Profil Berhasil Diperbarui!
+          <div className="bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-lg animate-in fade-in duration-200">
+            <CheckCircle className="w-4 h-4" /> Tersimpan Permanen di Server Backend!
           </div>
         )}
       </div>
@@ -2435,6 +2536,80 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
                 </div>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Database Backup & Restore Card */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-2">
+            <div>
+              <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide flex items-center gap-2">
+                <Database className="w-4 h-4 text-emerald-600" />
+                Pencadangan & Pemulihan Database Lengkap (Backup & Restore)
+              </h3>
+              <p className="text-slate-500 text-xs mt-0.5">
+                Semua data Anda (Profil, Logo, Icon/Favicon, Rekening Bank, Nama Direktur & Finance, Dokumen SPH, Kontrak PKS, dan Invoice Tagihan) tersimpan di server <code>data/db.json</code>.
+              </p>
+            </div>
+            <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-800 text-[11px] font-bold px-3 py-1 rounded-full border border-emerald-200 self-start sm:self-auto">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Auto-Save Server Disk
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+            {/* Download Backup */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 flex flex-col justify-between">
+              <div>
+                <h4 className="font-bold text-slate-900 text-xs flex items-center gap-2">
+                  <Download className="w-4 h-4 text-blue-600" />
+                  Unduh Berkas Cadangan (.JSON)
+                </h4>
+                <p className="text-[11px] text-slate-600 mt-1">
+                  Simpan cadangan salinan seluruh konfigurasi profil perusahaan, logo, rekening bank, kontak pelanggan, serta invoice ke file lokal komputer Anda.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleDownloadFullBackup}
+                disabled={isExporting}
+                className="w-full flex items-center justify-center gap-2 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-sm transition disabled:opacity-50"
+              >
+                <Download className="w-4 h-4" />
+                {isExporting ? 'Menyiapkan Berkas...' : 'Unduh Cadangan Database (.json)'}
+              </button>
+            </div>
+
+            {/* Restore from Backup */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 flex flex-col justify-between">
+              <div>
+                <h4 className="font-bold text-slate-900 text-xs flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-emerald-600" />
+                  Pulihkan dari Berkas Cadangan (.JSON)
+                </h4>
+                <p className="text-[11px] text-slate-600 mt-1">
+                  Unggah berkas cadangan JSON yang telah disimpan sebelumnya untuk memulihkan seluruh data dan pengaturan secara instan ke server.
+                </p>
+              </div>
+
+              <input
+                ref={restoreFileInputRef}
+                type="file"
+                accept=".json,application/json"
+                onChange={handleRestoreFileSelected}
+                className="hidden"
+              />
+
+              <button
+                type="button"
+                onClick={() => restoreFileInputRef.current?.click()}
+                disabled={isRestoring}
+                className="w-full flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-sm transition disabled:opacity-50"
+              >
+                <Upload className="w-4 h-4" />
+                {isRestoring ? 'Memulihkan Database...' : 'Pulihkan Database dari Berkas (.json)'}
+              </button>
+            </div>
           </div>
         </div>
 

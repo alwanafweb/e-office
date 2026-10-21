@@ -57,8 +57,9 @@ export const Navigation: React.FC<NavigationProps> = ({
     { id: 'settings', label: 'Profil PT. LDI', icon: Building, isPublic: false },
   ];
 
-  // Show all tabs; guest users will see lock badges on admin tabs and be prompted to log in
-  const tabs = allTabs;
+  // Jika belum login, sembunyikan semua tab internal admin (CRM, SPH, PKS, Invoice, Profil)
+  // Pengunjung publik hanya melihat tab verifikasi resmi "Cek Keaslian Dokumen"
+  const tabs = currentUser ? allTabs : allTabs.filter((t) => t.isPublic);
 
   const handleTabClick = (tabId: string, isPublic: boolean) => {
     setIsMobileMenuOpen(false);
@@ -183,18 +184,9 @@ export const Navigation: React.FC<NavigationProps> = ({
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <span className="hidden sm:inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-300 text-[11px] px-3 py-1 rounded-full border border-emerald-500/20 font-medium">
+                <span className="inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-300 text-[11px] px-3 py-1 rounded-full border border-emerald-500/20 font-medium">
                   <Globe className="w-3 h-3 text-emerald-400" /> Public Portal
                 </span>
-                <button
-                  type="button"
-                  onClick={() => onOpenAuthModal()}
-                  className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md shadow-blue-600/30 transition cursor-pointer"
-                  title="Masuk ke Panel Admin"
-                >
-                  <Lock className="w-3.5 h-3.5 text-blue-200" />
-                  <span>Login Admin</span>
-                </button>
               </div>
             )}
 
@@ -285,20 +277,11 @@ export const Navigation: React.FC<NavigationProps> = ({
           )}
 
           <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2 px-2 flex items-center justify-between">
-            <span>Menu Navigasi Sistem</span>
+            <span>{currentUser ? 'Menu Navigasi Sistem' : 'Portal Publik'}</span>
             {currentUser ? (
               <span className="text-emerald-400 font-mono">User: {currentUser.name}</span>
             ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsMobileMenuOpen(false);
-                  onOpenAuthModal();
-                }}
-                className="text-blue-400 hover:text-blue-300 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
-              >
-                <Lock className="w-3 h-3" /> Login Admin
-              </button>
+              <span className="text-emerald-400/80 font-mono text-[10px]">Cek Dokumen</span>
             )}
           </div>
           <div className="grid grid-cols-1 gap-1.5">

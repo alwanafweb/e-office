@@ -159,7 +159,7 @@ export default function App() {
     };
   }, []);
 
-  // Detect /admin, /login, /loginadmin path, hash or search parameter to trigger Admin Login Modal
+  // Detect /admin, /login, /loginadmin path, hash or search parameter, or secret shortcut to trigger Admin Login Modal
   useEffect(() => {
     const checkLoginAdminRoute = () => {
       if (typeof window !== 'undefined') {
@@ -176,9 +176,18 @@ export default function App() {
           setIsAuthModalOpen(true);
           // Clean URL path back to root without reloading page
           if (window.history && window.history.replaceState) {
-            window.history.replaceState({}, document.title, window.location.origin + window.location.pathname.replace(/\/loginadmin|\/admin|\/login/gi, '') || '/');
+            window.history.replaceState({}, document.title, window.location.origin + '/');
           }
         }
+      }
+    };
+
+    // Secret Admin Keyboard Shortcut: Ctrl + Shift + A or Alt + A
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey && e.shiftKey && (e.key === 'A' || e.key === 'a')) ||
+          (e.altKey && (e.key === 'A' || e.key === 'a'))) {
+        e.preventDefault();
+        setIsAuthModalOpen(true);
       }
     };
 
@@ -186,10 +195,12 @@ export default function App() {
 
     window.addEventListener('popstate', checkLoginAdminRoute);
     window.addEventListener('hashchange', checkLoginAdminRoute);
+    window.addEventListener('keydown', handleKeyDown);
 
     return () => {
       window.removeEventListener('popstate', checkLoginAdminRoute);
       window.removeEventListener('hashchange', checkLoginAdminRoute);
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 

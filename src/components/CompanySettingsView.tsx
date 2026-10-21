@@ -16,6 +16,8 @@ interface CompanySettingsViewProps {
   sphList?: SPH[];
   pksList?: PKS[];
   invoices?: Invoice[];
+  d1Status?: 'connected' | 'loading' | 'offline' | 'disconnected';
+  onUpdateD1Status?: (status: 'connected' | 'disconnected' | 'offline') => void;
   onUpdateProfile: (profile: CompanyProfile) => void;
   onRestoreDatabase?: (db: any) => void;
   onResetAllData?: () => void;
@@ -27,6 +29,8 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
   sphList = [],
   pksList = [],
   invoices = [],
+  d1Status = 'offline',
+  onUpdateD1Status,
   onUpdateProfile,
   onRestoreDatabase,
   onResetAllData,
@@ -808,7 +812,16 @@ export const CompanySettingsView: React.FC<CompanySettingsViewProps> = ({
       </div>
 
       {/* D1 Cloudflare Backend Config Panel */}
-      <D1ConfigPanel />
+      <D1ConfigPanel
+        currentStatus={d1Status}
+        onStatusChange={onUpdateD1Status}
+        onConfigSaved={(savedConfig) => {
+          onUpdateProfile({
+            ...profile,
+            d1Config: savedConfig,
+          });
+        }}
+      />
 
       <form onSubmit={handleSubmit} className="space-y-6 text-xs">
         {/* LOGO UPLOAD BOX */}

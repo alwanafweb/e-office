@@ -220,6 +220,19 @@ export interface CompanyProfile {
   smtpConfig?: SmtpConfig;
   mailketingApiKey?: string;
   mailketingSenderEmail?: string;
+  d1Config?: D1Config;
+}
+
+export interface D1Config {
+  databaseId: string;
+  workerEndpoint: string;
+  apiToken: string;
+  accountId: string;
+  mode: 'd1' | 'local';
+  isConnected?: boolean;
+  lastTested?: string;
+  lastTestMessage?: string;
+  latency?: number;
 }
 
 export interface FinancialFilter {

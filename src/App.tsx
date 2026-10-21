@@ -49,6 +49,8 @@ import {
   apiBulkCreateInvoices,
   apiBackupDatabase,
   apiRestoreDatabase,
+  apiTestCloudflareD1,
+  apiGetCloudflareConfig,
 } from './api/client';
 import {
   getDecryptedItem,
@@ -327,8 +329,39 @@ export default function App() {
 
   const [preSelectedCustomer, setPreSelectedCustomer] = useState<Customer | null>(null);
 
-  // Cloudflare D1 Connection State
-  const [d1Status, setD1Status] = useState<'connected' | 'loading' | 'offline'>('loading');
+  // Cloudflare D1 Connection State: 'connected' | 'loading' | 'offline' | 'disconnected'
+  const [d1Status, setD1Status] = useState<'connected' | 'loading' | 'offline' | 'disconnected'>('loading');
+
+  const checkD1ConnectionStatus = async (profileConfig?: any): Promise<'connected' | 'disconnected' | 'offline'> => {
+    let cfg = profileConfig;
+    if (!cfg) {
+      const raw = localStorage.getItem('ldi_db_config');
+      if (raw) {
+        try { cfg = JSON.parse(raw); } catch (e) {}
+      }
+    }
+    if (!cfg) {
+      try {
+        cfg = await apiGetCloudflareConfig();
+      } catch (e) {}
+    }
+
+    if (!cfg || cfg.mode === 'local' || (!cfg.databaseId && !cfg.workerEndpoint?.includes('.workers.dev'))) {
+      return 'offline';
+    }
+
+    try {
+      const res = await apiTestCloudflareD1({
+        endpoint: cfg.workerEndpoint,
+        accountId: cfg.accountId,
+        databaseId: cfg.databaseId,
+        apiToken: cfg.apiToken,
+      });
+      return res && res.success ? 'connected' : 'disconnected';
+    } catch (e) {
+      return 'disconnected';
+    }
+  };
 
   // Fetch initial data from Cloudflare Worker D1 Database
   useEffect(() => {
@@ -445,7 +478,9 @@ export default function App() {
               }
             }
 
-            setD1Status('connected');
+            // Verify real Cloudflare D1 connection status instead of hardcoding connected
+            const realD1Status = await checkD1ConnectionStatus(fetchedProfile?.d1Config || companyProfile?.d1Config);
+            if (isMounted) setD1Status(realD1Status);
           }
         } else {
           if (isMounted) setD1Status('offline');
@@ -523,11 +558,23 @@ export default function App() {
             );
           }
         } else {
-          setD1Status('offline');
+          const cfg = localStorage.getItem('ldi_db_config');
+          if (cfg && cfg.includes('"mode":"d1"')) {
+            setD1Status('disconnected');
+          } else {
+            setD1Status('offline');
+          }
         }
       } catch (err) {
         console.warn('Background D1 auto-sync notice:', err);
-        if (isMounted) setD1Status('offline');
+        if (isMounted) {
+          const cfg = localStorage.getItem('ldi_db_config');
+          if (cfg && cfg.includes('"mode":"d1"')) {
+            setD1Status('disconnected');
+          } else {
+            setD1Status('offline');
+          }
+        }
       }
     }
 
@@ -1359,6 +1406,8 @@ export default function App() {
             sphList={sphList}
             pksList={pksList}
             invoices={invoices}
+            d1Status={d1Status}
+            onUpdateD1Status={(newStatus) => setD1Status(newStatus)}
             onUpdateProfile={handleUpdateProfile}
             onRestoreDatabase={handleRestoreDatabase}
             onResetAllData={handleResetAllData}

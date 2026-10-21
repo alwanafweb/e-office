@@ -272,6 +272,45 @@ export const apiRestoreDatabase = async (databasePayload: any): Promise<{ succes
 };
 
 // ==========================================
+// CLOUDFLARE D1 VERIFICATION & CONFIG API
+// ==========================================
+export interface CloudflareTestPayload {
+  endpoint?: string;
+  accountId?: string;
+  databaseId?: string;
+  apiToken?: string;
+}
+
+export interface CloudflareTestResponse {
+  success: boolean;
+  message: string;
+  latency?: number;
+  result?: any;
+}
+
+export const apiTestCloudflareD1 = async (
+  payload: CloudflareTestPayload
+): Promise<CloudflareTestResponse> => {
+  return apiFetch<CloudflareTestResponse>('/api/cloudflare/test', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+};
+
+export const apiGetCloudflareConfig = async (): Promise<any> => {
+  return apiFetch<any>('/api/cloudflare/config', {
+    method: 'GET',
+  });
+};
+
+export const apiSaveCloudflareConfig = async (config: any): Promise<any> => {
+  return apiFetch<any>('/api/cloudflare/config', {
+    method: 'POST',
+    body: JSON.stringify(config),
+  });
+};
+
+// ==========================================
 // BULK DATA IMPORT API
 // ==========================================
 export const apiBulkCreateCustomers = async (customers: Partial<Customer>[]): Promise<{ success: boolean; count: number; added: number; customers: Customer[] }> => {

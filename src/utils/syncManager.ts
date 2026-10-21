@@ -78,6 +78,14 @@ export function autoMergeEntities<T extends { id: string; updatedAt?: string; cr
   return { merged, discrepancies };
 }
 
+export function getStoredD1Config() {
+  try {
+    const raw = localStorage.getItem('ldi_db_config');
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return null;
+}
+
 /**
  * Checks local database logs/state against Cloudflare D1 and auto-merges discrepancies
  */
@@ -90,7 +98,20 @@ export async function syncLocalWithCloudflareD1(localData: {
   const nowStr = new Date().toISOString();
 
   try {
-    // 1. Verify Cloudflare D1 / Worker backend health
+    // 1. Check if Cloudflare D1 is actively enabled and verified in settings
+    const cfg = getStoredD1Config();
+    if (!cfg || cfg.mode !== 'd1' || !cfg.isConnected) {
+      return {
+        success: false,
+        timestamp: nowStr,
+        discrepanciesResolved: 0,
+        totalMerged: 0,
+        mergedData: localData,
+        error: 'Cloudflare D1 tidak terhubung atau mode Local aktif di Pengaturan',
+      };
+    }
+
+    // 2. Verify backend health
     const health = await apiCheckHealth();
     if (!health || health.status !== 'online') {
       return {

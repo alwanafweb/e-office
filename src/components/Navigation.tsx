@@ -29,7 +29,7 @@ interface NavigationProps {
   onLogout: () => void;
   theme?: 'light' | 'dark';
   onToggleTheme?: () => void;
-  d1Status?: 'connected' | 'loading' | 'offline';
+  d1Status?: 'connected' | 'loading' | 'offline' | 'disconnected';
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
@@ -42,7 +42,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   onLogout,
   theme = 'light',
   onToggleTheme,
-  d1Status = 'connected',
+  d1Status = 'offline',
 }) => {
   const profile = companyProfile || COMPANY_PROFILE;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -95,19 +95,44 @@ export const Navigation: React.FC<NavigationProps> = ({
                   {profile.legalName || 'PT. LINTAS DATA INTERNASIONAL'}
                 </h1>
                 {currentUser && d1Status === 'connected' && (
-                  <span className="hidden sm:inline-flex items-center gap-1 bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('settings')}
+                    title="Cloudflare D1 terhubung & aktif. Klik untuk kelola di Pengaturan"
+                    className="hidden sm:inline-flex items-center gap-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border border-emerald-500/40 transition cursor-pointer"
+                  >
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Cloudflare D1 Connected
-                  </span>
+                  </button>
+                )}
+                {currentUser && d1Status === 'disconnected' && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('settings')}
+                    title="Cloudflare D1 tidak terhubung / gagal verifikasi. Klik untuk periksa di Pengaturan"
+                    className="hidden sm:inline-flex items-center gap-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border border-rose-500/40 transition cursor-pointer"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span> Cloudflare D1 Disconnected
+                  </button>
                 )}
                 {currentUser && d1Status === 'loading' && (
-                  <span className="hidden sm:inline-flex items-center gap-1 bg-amber-500/20 text-amber-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border border-amber-500/30">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('settings')}
+                    title="Sedang memverifikasi koneksi ke Cloudflare D1..."
+                    className="hidden sm:inline-flex items-center gap-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border border-amber-500/40 transition cursor-pointer"
+                  >
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span> Syncing D1...
-                  </span>
+                  </button>
                 )}
                 {currentUser && d1Status === 'offline' && (
-                  <span className="hidden sm:inline-flex items-center gap-1 bg-slate-500/20 text-slate-400 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border border-slate-500/30">
-                    Local Storage Mode
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('settings')}
+                    title="Aplikasi berjalan dalam Mode Local Storage. Klik untuk konfigurasi Cloudflare D1 di Pengaturan"
+                    className="hidden sm:inline-flex items-center gap-1.5 bg-slate-700/60 hover:bg-slate-700 text-slate-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border border-slate-600/60 transition cursor-pointer"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span> Local Storage Mode
+                  </button>
                 )}
               </div>
               <p className="text-[9px] sm:text-[10px] text-blue-300 tracking-wider uppercase font-medium mt-0.5 truncate max-w-[130px] xs:max-w-[190px] sm:max-w-none">

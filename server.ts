@@ -85,6 +85,7 @@ async function startServer() {
     pkss: any[];
     invoices: any[];
     activityLogs: any[];
+    d1Config?: any;
   } = {
     initialized: false,
     companyProfile: { ...DEFAULT_COMPANY_PROFILE },
@@ -93,6 +94,7 @@ async function startServer() {
     pkss: [],
     invoices: [],
     activityLogs: [],
+    d1Config: null,
   };
 
   const seedDatabaseIfEmpty = () => {
@@ -300,6 +302,7 @@ async function startServer() {
           if (Array.isArray(parsed.pkss)) db.pkss = parsed.pkss;
           if (Array.isArray(parsed.invoices)) db.invoices = parsed.invoices;
           if (Array.isArray(parsed.activityLogs)) db.activityLogs = parsed.activityLogs;
+          if (parsed.d1Config) db.d1Config = parsed.d1Config;
 
           console.log(`[DB PERSISTENCE] Loaded ${db.customers.length} customers, ${db.sphs.length} SPHs, ${db.pkss.length} PKSs, ${db.invoices.length} invoices from disk. Company Profile: "${db.companyProfile?.name || 'Default'}", Director: "${db.companyProfile?.directorName || 'Default'}".`);
         }
@@ -462,6 +465,149 @@ async function startServer() {
     db.initialized = true;
     saveDatabase();
     res.json({ success: true, count: list.length, added: addedCount, invoices: db.invoices });
+  });
+
+  // ==========================================
+  // CLOUDFLARE D1 INTEGRATION & VERIFICATION ENDPOINTS
+  // ==========================================
+  app.post('/api/cloudflare/test', async (req, res) => {
+    const { endpoint, accountId, databaseId, apiToken } = req.body || {};
+    const startTime = Date.now();
+
+    try {
+      const cleanEndpoint = (endpoint || '').trim();
+      const cleanAccountId = (accountId || '').trim();
+      const cleanDatabaseId = (databaseId || '').trim();
+      const cleanToken = (apiToken || '').trim();
+
+      // Case 1: Custom Worker API Endpoint (e.g. https://my-worker.workers.dev)
+      if (cleanEndpoint && !cleanEndpoint.includes('api.cloudflare.com')) {
+        const targetUrl = cleanEndpoint.replace(/\/$/, '') + '/api/health';
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        try {
+          const workerRes = await fetch(targetUrl, {
+            signal: controller.signal,
+            headers: cleanToken ? { Authorization: `Bearer ${cleanToken}` } : {},
+          });
+          clearTimeout(timeoutId);
+          const latency = Date.now() - startTime;
+          if (workerRes.ok) {
+            return res.json({
+              success: true,
+              latency,
+              message: `Koneksi ke Worker API (${cleanEndpoint}) berhasil diverifikasi! Respon HTTP ${workerRes.status}`,
+            });
+          } else {
+            return res.status(400).json({
+              success: false,
+              latency,
+              message: `Worker API mengembalikan HTTP ${workerRes.status}: ${workerRes.statusText}`,
+            });
+          }
+        } catch (err: any) {
+          clearTimeout(timeoutId);
+          return res.status(400).json({
+            success: false,
+            message: `Gagal menghubungi Worker API (${cleanEndpoint}): ${err.message}`,
+          });
+        }
+      }
+
+      // Case 2: Direct Cloudflare REST API v4 validation
+      if (!cleanAccountId || !cleanDatabaseId || !cleanToken) {
+        return res.status(400).json({
+          success: false,
+          message: 'Konfigurasi tidak lengkap. Harap isi Cloudflare Account ID, Database ID, dan API Token di Pengaturan.',
+        });
+      }
+
+      const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${cleanAccountId}/d1/database/${cleanDatabaseId}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      const cfResponse = await fetch(cfUrl, {
+        method: 'GET',
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${cleanToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      clearTimeout(timeoutId);
+      const latency = Date.now() - startTime;
+      const cfData: any = await cfResponse.json().catch(() => ({}));
+
+      if (cfResponse.ok && cfData.success) {
+        const dbName = cfData.result?.name || cleanDatabaseId;
+        const numTables = cfData.result?.num_tables !== undefined ? `${cfData.result.num_tables} tabel` : 'terhubung';
+        return res.json({
+          success: true,
+          latency,
+          message: `Koneksi ke Cloudflare D1 Database '${dbName}' (${numTables}) berhasil terverifikasi!`,
+          result: cfData.result,
+        });
+      } else {
+        const errors = cfData.errors?.map((e: any) => e.message).join(', ') || `HTTP ${cfResponse.status} ${cfResponse.statusText}`;
+        return res.status(400).json({
+          success: false,
+          latency,
+          message: `Cloudflare menolak permintaan: ${errors}`,
+        });
+      }
+    } catch (err: any) {
+      const latency = Date.now() - startTime;
+      return res.status(400).json({
+        success: false,
+        latency,
+        message: `Koneksi gagal: ${err.message || 'Koneksi jaringan terputus atau timeout'}`,
+      });
+    }
+  });
+
+  app.get('/api/cloudflare/config', (req, res) => {
+    res.json(db.d1Config || {
+      databaseId: '',
+      workerEndpoint: 'https://api.cloudflare.com/client/v4',
+      apiToken: '',
+      accountId: '',
+      mode: 'local',
+      isConnected: false,
+    });
+  });
+
+  app.post('/api/cloudflare/config', (req, res) => {
+    const incoming = req.body || {};
+    db.d1Config = {
+      ...(db.d1Config || {}),
+      ...incoming,
+    };
+    saveDatabase();
+    res.json({
+      success: true,
+      message: 'Konfigurasi Cloudflare D1 berhasil disimpan.',
+      d1Config: db.d1Config,
+    });
+  });
+
+  app.get('/api/cloudflare/status', (req, res) => {
+    const config = db.d1Config;
+    if (!config || config.mode === 'local') {
+      return res.json({
+        status: 'local',
+        isConnected: false,
+        mode: 'local',
+        message: 'Aplikasi berjalan dalam Mode Local Storage.',
+      });
+    }
+    return res.json({
+      status: config.isConnected ? 'connected' : 'disconnected',
+      isConnected: Boolean(config.isConnected),
+      mode: config.mode || 'd1',
+      lastTested: config.lastTested,
+      databaseId: config.databaseId,
+      message: config.lastTestMessage || (config.isConnected ? 'Terhubung ke Cloudflare D1' : 'Belum terverifikasi'),
+    });
   });
 
   // Health Check Endpoint

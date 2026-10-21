@@ -177,15 +177,17 @@ echo "  • Local Backend Health: $HEALTH_CHECK"
 cat << 'UPDATECMD' > /usr/local/bin/update-app
 #!/bin/bash
 set -e
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
-echo "🔄 Memperbarui Aplikasi E-Office dari GitHub..."
-cd /var/www/ldi-app
-git pull origin main || git pull origin master
-npm install
-npm run build
-systemctl restart ldi-backend || true
-systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || true
-echo "✅ Aplikasi E-Office & Backend Service berhasil diperbarui ke versi terbaru!"
+if [ -f "/var/www/ldi-app/update.sh" ]; then
+    bash /var/www/ldi-app/update.sh
+else
+    export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+    cd /var/www/ldi-app
+    git pull origin main || git pull origin master
+    npm install
+    npm run build
+    systemctl restart ldi-backend || true
+    systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || true
+fi
 UPDATECMD
 chmod +x /usr/local/bin/update-app
 

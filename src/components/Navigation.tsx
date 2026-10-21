@@ -49,17 +49,17 @@ export const Navigation: React.FC<NavigationProps> = ({
 
   const allTabs = [
     { id: 'dashboard', label: 'Dashboard Overview', icon: TrendingUp, isPublic: false },
-    { id: 'verifyDoc', label: 'Cek Keaslian Dokumen', icon: ShieldCheck, isPublic: true },
     { id: 'customers', label: 'Pelanggan CRM', icon: Users, isPublic: false },
     { id: 'sph', label: 'Quotation (SPH)', icon: FileText, isPublic: false },
     { id: 'pks', label: 'PKS Contracts', icon: FileCheck, isPublic: false },
     { id: 'invoices', label: 'Invoice Manager', icon: Receipt, badge: unpaidCount, isPublic: false },
+    { id: 'verifyDoc', label: 'Cek Keaslian Dokumen', icon: ShieldCheck, isPublic: true },
     { id: 'settings', label: 'Profil PT. LDI', icon: Building, isPublic: false },
   ];
 
-  // Jika belum login, sembunyikan semua tab internal admin (CRM, SPH, PKS, Invoice, Profil)
-  // Pengunjung publik hanya melihat tab verifikasi resmi "Cek Keaslian Dokumen"
-  const tabs = currentUser ? allTabs : allTabs.filter((t) => t.isPublic);
+  // Jika pengunjung publik (belum login): HANYA menu 'Cek Keaslian Dokumen' yang ditampilkan.
+  // Jika admin sudah berhasil login: SEMUA menu akan tampil lengkap.
+  const tabs = currentUser ? allTabs : allTabs.filter((t) => t.id === 'verifyDoc');
 
   const handleTabClick = (tabId: string, isPublic: boolean) => {
     setIsMobileMenuOpen(false);
@@ -190,20 +190,22 @@ export const Navigation: React.FC<NavigationProps> = ({
               </div>
             )}
 
-            {/* Mobile Hamburger Toggle Button */}
-            <button
-              type="button"
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="lg:hidden p-2 rounded-xl bg-slate-800 text-slate-200 hover:text-white hover:bg-slate-700 border border-slate-700 transition"
-              aria-label="Toggle Mobile Navigation Menu"
-            >
-              {isMobileMenuOpen ? <X className="w-5 h-5 text-amber-400" /> : <Menu className="w-5 h-5 text-blue-400" />}
-            </button>
+            {/* Mobile Hamburger Toggle Button - Hanya tampil jika Admin sudah login */}
+            {currentUser && (
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="lg:hidden p-2 rounded-xl bg-slate-800 text-slate-200 hover:text-white hover:bg-slate-700 border border-slate-700 transition cursor-pointer"
+                aria-label="Toggle Mobile Navigation Menu"
+              >
+                {isMobileMenuOpen ? <X className="w-5 h-5 text-amber-400" /> : <Menu className="w-5 h-5 text-blue-400" />}
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Desktop Tab Navigation Row */}
-        <nav className="hidden lg:flex space-x-1 sm:space-x-2 overflow-x-auto py-2.5 touch-scroll no-scrollbar">
+        {/* Tab Navigation Row: untuk Publik tampil di semua ukuran layar, untuk Admin responsif */}
+        <nav className={`${currentUser ? 'hidden lg:flex' : 'flex'} space-x-1 sm:space-x-2 overflow-x-auto py-2.5 touch-scroll no-scrollbar`}>
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -245,8 +247,8 @@ export const Navigation: React.FC<NavigationProps> = ({
         </nav>
       </div>
 
-      {/* Mobile Drawer Navigation Menu */}
-      {isMobileMenuOpen && (
+      {/* Mobile Drawer Navigation Menu (Hanya untuk Admin) */}
+      {isMobileMenuOpen && currentUser && (
         <div className="lg:hidden bg-slate-900 border-b border-slate-800 px-4 py-3 shadow-2xl animate-fade-in">
           {/* Mobile Theme Switch Button */}
           {onToggleTheme && (

@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import nodemailer from 'nodemailer';
+import nodemailer, { SendMailOptions } from 'nodemailer';
 import { createServer as createViteServer } from 'vite';
 
 async function startServer() {
@@ -1356,7 +1356,7 @@ async function startServer() {
         .replace(/\s{2,}/g, ' ')
         .trim();
 
-      const mailOptions: nodemailer.SendMailOptions = {
+      const mailOptions: SendMailOptions = {
         from: `"${fromName}" <${fromEmail}>`,
         to: recipient.trim(),
         cc: ccList && ccList.length > 0 ? ccList : undefined,

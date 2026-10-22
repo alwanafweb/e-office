@@ -43,6 +43,7 @@ export const CustomerView: React.FC<CustomerViewProps> = ({
   onAddCustomer,
   onUpdateCustomer,
   onDeleteCustomer,
+  onBulkAddCustomers,
   onCreateSphForCustomer,
   onCreateInvoiceForCustomer,
 }) => {
